@@ -16,3 +16,16 @@ blockquote {
   padding-left: 20px;
   color: var(--theme-foreground-alt);
 }
+
+/* Info card beside the map. */
+.event-info {
+  align-self: start;
+}
+
+.event-info h2 {
+  margin-top: 0;
+}
+
+.event-info p {
+  margin: 0 0 0.75rem;
+}

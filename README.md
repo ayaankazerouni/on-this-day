@@ -13,7 +13,7 @@ Make sure you have Node installed. I'm using v22.13.1.
 
 ## Getting events from Wikipedia
 
-This all happens in [`events.py`](events.py).
+This all happens in [`events.py`](src/data/events.py).
 To play with the code:
 
 - Install Python

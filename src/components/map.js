@@ -1,7 +1,6 @@
 import * as d3 from "d3";
 import { FileAttachment } from "observablehq:stdlib";
 import * as topojson from "topojson-client";
-import { getRegionColour } from "./colours.js";
 
 /** @type {import('./lib.js').HistEvent} */
 
@@ -14,6 +13,7 @@ import { getRegionColour } from "./colours.js";
  *   | 'landStroke'
  *   | 'landHighlight'
  *   | 'seaFill'
+ *   | 'sphereStroke'
  *   | 'pointFill'
  *   | 'pointStroke'
  *   | 'tooltipBg'
@@ -22,43 +22,59 @@ import { getRegionColour } from "./colours.js";
  * @returns {string}
  */
 function getColor(key, dark = false) {
+  // Mostly greyscale palette.
   return {
-    landFill: "darkgrey",
-    unclaimedFill: "lightgrey",
-    landHighlight: dark ? "coral" : "crimson",
-    landStroke: dark ? "white" : "black",
-    seaFill: dark ? "steelblue" : "lightblue",
-    pointFill: dark ? "white" : "darkgrey",
-    pointStroke: dark ? "black" : "white",
-    tooltipBg: dark ? "darkslategrey" : "ivory",
-    tooltipFg: dark ? "ivory" : "darkslategrey",
+    landFill: dark ? "#5a5a5a" : "#c4c4c4",
+    unclaimedFill: dark ? "#4a4a4a" : "#d6d6d6",
+    landHighlight: dark ? "#ffffff" : "#000000",
+    landStroke: dark ? "#e0e0e0" : "#222222",
+    seaFill: dark ? "#2b2b2b" : "#efefef",
+    sphereStroke: dark ? "#777777" : "#999999",
+    pointFill: dark ? "#f0f0f0" : "#3a3a3a",
+    pointStroke: dark ? "#111111" : "#ffffff",
+    tooltipBg: dark ? "#222222" : "#ffffff",
+    tooltipFg: dark ? "#eeeeee" : "#222222",
   }[key];
 }
 
 const tooltip = getTooltipElement();
 
-// Store the last transform to maintain zoom state between redraws.
-let lastTransform = d3.zoomIdentity;
+/**
+ * Two dots belong to the same event if they share a year and description.
+ * (events.py emits one row per linked Wikipedia page with coordinates, so a
+ * single event may appear as several dots.)
+ */
+function sameEvent(a, b) {
+  return a && b && a.year === b.year && a.description === b.description;
+}
 
 /**
- * @param {FileAttachment} geodata A FileAttachment containing GeoJSON data.
- * @param {number} width Default 1000
- * @param {number} dark Default false
- * @param {HistEvent} chosenEvent An event to highlight. Defaults to null
- * @returns
+ * @param {Object} options
+ * @param {FileAttachment|Object|null} options.geodata Historical basemap
+ *   (TopoJSON or a FileAttachment for it). Drawn only when non-null.
+ * @param {Object} options.land Borderless land TopoJSON (world-atlas land-50m).
+ * @param {number} [options.width=1000]
+ * @param {boolean} [options.dark=false]
+ * @param {HistEvent[]} [options.events=[]] Events occurring on this day in history.
+ * @param {HistEvent|null} [options.chosenEvent=null] The selected event, if any.
+ * @param {(e: HistEvent|null) => void} [options.onSelect] Called with the
+ *   clicked event, or null to clear the selection.
+ * @returns {SVGSVGElement}
  */
-export async function worldMap(
-  geodata,
+export async function worldMap({
+  geodata = null,
+  land,
   width = 1000,
   dark = false,
+  events = [],
   chosenEvent = null,
-) {
+  onSelect = () => {},
+} = {}) {
   // If geodata is a FileAttachment, await its JSON
   if (geodata?.json) {
     geodata = await geodata.json();
   }
 
-  const topodata = topojson.feature(geodata, geodata.objects.regions);
   const sphere = { type: "Sphere" };
 
   // Calculate responsive dimensions
@@ -74,120 +90,109 @@ export async function worldMap(
     sphere,
   );
 
-  const zoom = d3
-    .zoom()
-    .scaleExtent([1, 8])
-    .translateExtent([
-      [-100, -100],
-      [width + 100, height + 100],
-    ])
-    .wheelDelta((event) => -event.deltaY * 0.00085)
-    .on("zoom", zoomed);
-
   const container = d3
     .create("svg")
     .attr("width", width)
     .attr("height", height);
 
-  // Stick everything in a group so everything zooms together.
   const g = container.append("g");
 
   const path = d3.geoPath(projection);
 
+  // Sea. Clicking it clears the selection.
   g.append("path")
     .datum(sphere)
     .attr("fill", getColor("seaFill", dark))
-    .attr("stroke", "black")
-    .attr("stroke-width", 1.5)
-    .attr("d", path);
+    .attr("stroke", getColor("sphereStroke", dark))
+    .attr("stroke-width", 1)
+    .attr("d", path)
+    .on("click", () => {
+      if (chosenEvent) onSelect(null);
+    });
 
-  const land = g.append("g")
-    .selectAll("path")
-    .data(topodata.features);
+  if (geodata) {
+    // Historical borders for the selected event's time period.
+    const regions = topojson.feature(geodata, geodata.objects.regions);
+    const point = [chosenEvent?.longitude, chosenEvent?.latitude];
+    const containsChosenEvent = (d) =>
+      chosenEvent !== null && d3.geoContains(d, point);
 
-  function drawLand(landContainer) {
-    const containsChosenEvent = (d) => {
-      if (chosenEvent === null) return false;
-      const [lon, lat] = [chosenEvent.longitude, chosenEvent.latitude];
-      return d3.geoContains(d, [lon, lat]);
-    };
-
-    landContainer
+    g.append("g")
+      .selectAll("path")
+      .data(regions.features)
       .join("path")
       .attr("d", path)
-      .attr("fill", (d) =>
+      .attr("fill", getColor("landFill", dark))
+      .attr("stroke", (d) =>
         containsChosenEvent(d)
           ? getColor("landHighlight", dark)
-          : getRegionColour(d)
+          : getColor("landStroke", dark),
       )
-      .attr("stroke", "black")
-      .attr("stroke-width", (d) => (containsChosenEvent(d) ? 2.5 : 1.5))
-      .attr("stroke-opacity", (d) => (getName(d) ? 0.3 : 0.8))
+      .attr("stroke-width", (d) => (containsChosenEvent(d) ? 1.5 : 0.5))
+      .attr("stroke-opacity", (d) => (containsChosenEvent(d) ? 1 : 0.3))
       .on("mouseover", (_, d) => {
         const name = getName(d);
         if (name !== null) {
           tooltip.html(`${name}`).style("visibility", "visible");
         }
       })
-      .on("mousemove", (event) => {
-        tooltip
-          .style("top", event.pageY + 10 + "px")
-          .style("left", event.pageX + 10 + "px");
-      })
-      .on("mouseout", () => {
-        tooltip.style("visibility", "hidden");
-      });
+      .on("mousemove", moveTooltip)
+      .on("mouseout", hideTooltip);
+  } else {
+    // No selection: plain land, no borders.
+    g.append("path")
+      .datum(topojson.feature(land, land.objects.land))
+      .attr("fill", getColor("landFill", dark))
+      .attr("stroke", "none")
+      .attr("d", path)
+      .style("pointer-events", "none");
   }
 
-  land.call(drawLand);
+  const isChosen = (d) => sameEvent(d, chosenEvent);
 
-  g.on("dblclick", resetZoom);
+  const dots = g
+    .append("g")
+    .selectAll("circle")
+    .data(events)
+    .join("circle")
+    .attr("fill", (d) =>
+      isChosen(d) ? getColor("landHighlight", dark) : getColor("pointFill", dark),
+    )
+    .attr("stroke", getColor("pointStroke", dark))
+    .attr("r", (d) => (isChosen(d) ? 8 : 5))
+    .attr("opacity", (d) => (chosenEvent && !isChosen(d) ? 0.3 : 0.8))
+    .style("cursor", "pointer")
+    .attr(
+      "transform",
+      (d) => `translate(${projection([d.longitude, d.latitude])})`,
+    )
+    .on("click", (event, d) => {
+      event.stopPropagation();
+      hideTooltip();
+      onSelect(d === chosenEvent ? null : d);
+    })
+    .on("mouseover", (_, d) => {
+      const bce = d.year < 0 ? "BCE" : "CE";
+      const date = `${d.month} ${d.day}, ${Math.abs(d.year)} ${bce}`;
+      tooltip
+        .html(`<strong>${date}</strong><br/>${d.description}`)
+        .style("visibility", "visible");
+    })
+    .on("mousemove", moveTooltip)
+    .on("mouseout", hideTooltip);
 
-  const dots = g.append("g");
+  // Draw the chosen event's dots on top of the dimmed ones.
+  dots.filter(isChosen).raise();
 
-  if (chosenEvent) {
-    dots
-      .selectAll("circle")
-      .data([chosenEvent])
-      .join("circle")
-      .attr("fill", getColor("pointFill", dark))
-      .attr("stroke", getColor("pointStroke", dark))
-      .attr("r", 3)
-      .attr(
-        "transform",
-        (d) => `translate(${projection([d.longitude, d.latitude])})`,
-      )
-      .on("mouseover", (_, d) => {
-        const bce = d.year < 0 ? "BCE" : "CE";
-        const date = `${d.month} ${d.day}, ${Math.abs(d.year)} ${bce}`;
-        tooltip
-          .html(`<strong>${date}</strong><br/>${d.description}`)
-          .style("visibility", "visible");
-      })
-      .on("mousemove", (event) => {
-        tooltip
-          .style("top", event.pageY + 10 + "px")
-          .style("left", event.pageX + 10 + "px");
-      })
-      .on("mouseout", () => {
-        tooltip.style("visibility", "hidden");
-      });
+  function moveTooltip(event) {
+    tooltip
+      .style("top", event.pageY + 10 + "px")
+      .style("left", event.pageX + 10 + "px");
   }
 
-  function resetZoom(event) {
-    event.preventDefault();
-    event.stopPropagation();
-    lastTransform = d3.zoomIdentity;
-    container.transition().duration(750).call(zoom.transform, d3.zoomIdentity);
+  function hideTooltip() {
+    tooltip.style("visibility", "hidden");
   }
-
-  function zoomed({ transform }) {
-    g.attr("transform", transform);
-    lastTransform = transform;
-  }
-
-  container.call(zoom); // Make it zoomable
-  container.call(zoom.transform, lastTransform); // Restore last transform
 
   return container.node();
 }

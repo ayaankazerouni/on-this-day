@@ -7,10 +7,8 @@ theme: ['slate', 'wide']
 
 <link rel="stylesheet" href="./styles.css"/>
 
-Just for fun, a little project to help visualize contemporaneous events in history.
+Just for fun, a little map of Wikipedia's On This Day Events.
 [Here's the code.](https://github.com/ayaankazerouni/map-history)
-
-Also see [https://runningreality.org](runningreality.org), a far more complete project with similar goals.
 
 ## The data
 
@@ -29,22 +27,3 @@ Ourednik emphasises:
 **"On this day" events**, obtained from the Wikimedia `onthisday` Feed API. See the code for this on GitHub ([`ayaankazerouni/map-history`](https://github.com/ayaankazerouni/map-history)).
 Only events with coordinates (locations) were included.
 If an event contained multiple coordinates, the event is included twice, once at each place.
-Data was sourced from English Wikipedia; there is a bit of a bias toward events that involved Europeans, especially farther back in time.
-
-## A note about colours
-
-The specific colours in the map don't mean anything.
-They are chosen by cycling through a list of 50 colours.
-Some effort was made for consistency (e.g., different regions under British rule appear in the same colour).
-But there are still colour collisions (because there are more than 50 regions/governments/political entities in most of the maps).
-For example, in 2010 CE, Australia and Canada are both light blue.
-
-## TO-DOs
-
-**This is a work in progress.**
-
-- Add fuzziness for uncertain borders.
-- Refactor event data.
-  - Wikipedia "on this day" events are a poor description of "history". Events don't only occur on single days or in single places, and more recent "events" tend to be more like newspaper headlines than major geopolitical events.
-  - ~~So the longer term plan is to have an event database that allows GeoJSON features with start and end dates. Then we can draw events with larger spatial and temporal spans.
-  - So the idea is: if someone searches for the an event that's not necessarily on one day, or in one place, like "the Rennaissance". We can search for _other_ events that overlapped with the Rennaissance temporally, and show those events on the map as well. Those events might be regions or points, and might span single days or longer time periods.~~ Just look at [runningreality.org](https://runningreality.org).
