@@ -12,7 +12,7 @@ import {
   getClosestTimePeriod,
   yearToString
 } from "./components/lib.js";
-import { MONTHS } from "./components/lib.js";
+import { MONTHS } from "./components/months.js";
 ```
 
 ```js
@@ -62,9 +62,12 @@ const map = await worldMap({
 ```
 
 ```js
-const date = new Date();
-const month = MONTHS[date.getMonth()]["name"]
-const day = date.getDate();
+// Take the date from the data, not the visitor's clock: the data is built once
+// a day (in UTC), so the two can disagree across time zones or if a build is late.
+// Fall back to the visitor's date only if there's no data.
+const today = new Date();
+const month = onThisDay[0]?.month ?? MONTHS[today.getMonth()].name;
+const day = onThisDay[0]?.day ?? today.getDate();
 const dateString = `${month} ${day}`;
 ```
 # On This Day In History

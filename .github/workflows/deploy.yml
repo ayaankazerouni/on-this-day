@@ -5,6 +5,11 @@ on:
     branches:
       - main
   workflow_dispatch:
+  # Rebuild daily so the on-this-day data matches the date. Runs in UTC; an
+  # odd minute avoids the top-of-the-hour queue, when scheduled runs are most
+  # often delayed.
+  schedule:
+    - cron: "17 0 * * *"
 
 permissions:
   contents: read
