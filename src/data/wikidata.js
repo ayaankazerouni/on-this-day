@@ -1,7 +1,8 @@
 const SPARQL_ENDPOINT = "https://query.wikidata.org/sparql";
 
 /**
- * QIDs per SPARQL request. Keeps the GET URL comfortably short.
+ * Most QIDs per SPARQL request. A batch can exceed this only if a single
+ * event has more pages than this, since an event is never split across batches.
  */
 const QIDS_PER_QUERY = 100;
 
