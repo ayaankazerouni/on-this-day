@@ -7,7 +7,6 @@ toc: false
 ```js
 // Load components
 import { worldMap } from "./components/map.js";
-import { timelineRuler } from "./components/timeline.js";
 import {
   getGeoData,
   getClosestTimePeriod,
@@ -59,18 +58,14 @@ const map = await worldMap({
   events: onThisDay,
   chosenEvent,
   onSelect: setChosenEvent,
-});
-```
-
-```js
-// How far back today's events go, with the drawn basemap's era highlighted.
-const ruler = timelineRuler({
-  basemapYears: timePeriods,
-  eventYears: onThisDay.map((d) => d.year),
-  basemapYear: closestYear,
-  eventYear: chosenEvent?.year ?? null,
-  width,
-  dark,
+  // Ruler above the map: how far back today's events go,
+  // with the drawn basemap's era highlighted.
+  timeline: {
+    basemapYears: timePeriods,
+    eventYears: onThisDay.map((d) => d.year),
+    basemapYear: closestYear,
+    eventYear: chosenEvent?.year ?? null,
+  },
 });
 ```
 
@@ -83,10 +78,10 @@ const month = onThisDay[0]?.month ?? MONTHS[today.getMonth()].name;
 const day = onThisDay[0]?.day ?? today.getDate();
 const dateString = `${month} ${day}`;
 ```
-# On This Day In History
+# Today In History
 
 <span style='font-size: 1.2em'>
-  <em>${dateString} (UTC)</em>
+  <em>${dateString}</em>
 </span>
 
 <div class="grid grid-cols-4">
@@ -106,17 +101,16 @@ const dateString = `${month} ${day}`;
           <p>${chosenEvent.description}</p>
           ${chosenEvent.page
             ? html`<p><a href=${chosenEvent.page.url} target="_blank" rel="noopener">
-                ${chosenEvent.page.title} on Wikipedia ↗</a></p>`
+                ${chosenEvent.page.title} ↗</a> on Wikipedia </p>`
             : ""}`
-        : html`<p>Click on an event to see the historical borders of the day.</p>`}
+        : html`<p>Click on a point in the map to see details.</p>`}
     </div>
     <p class="attribution">
-      Events from <a href="https://en.wikipedia.org/" target="_blank" rel="noopener">Wikipedia</a>
-      · <a href="https://www.wikidata.org/" target="_blank" rel="noopener">Powered by Wikidata</a>
+      <a href="./about">About</a> | Made with <a href="https://observablehq.com/framework/" target="_blank">Observable Framework</a> | <a href="https://github.com/ayaankazerouni/on-this-day" target="_blank">GitHub</a> |
+      Powered by <a href="https://www.mediawiki.org/wiki/Wikimedia_APIs" target="_blank" rel="noopener">Wikimedia APIs</a> and <a href="https://www.wikidata.org/" target="_blank" rel="noopener">Wikidata</a>
     </p>
   </div>
   <div class="grid-colspan-3" id="map">
-    ${ruler}
     ${map}
   </div>
 </div>

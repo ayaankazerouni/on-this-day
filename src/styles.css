@@ -41,7 +41,18 @@ blockquote {
 /* Timeline ruler above the map. Text uses the theme's text colours. */
 .timeline-end-labels text {
   font-size: 11px;
-  fill: var(--theme-foreground-muted);
+  fill: var(--theme-foreground);
+  /* A halo in the page colour, so threads passing behind don't cut through the text. */
+  stroke: var(--theme-background);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+  paint-order: stroke;
+}
+
+/* Year of the event whose thread is hovered. */
+.timeline-hover-label {
+  font-size: 11px;
+  fill: var(--theme-foreground);
 }
 
 .timeline-label {
@@ -59,14 +70,6 @@ blockquote {
 
 .timeline-label a:hover tspan {
   text-decoration: none;
-}
-
-.timeline-tooltip {
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  padding: 4px 8px;
-  font-size: 13px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 /* Lead image of the chosen event's Wikipedia page. Images from Wikidata come
