@@ -122,7 +122,9 @@ export async function worldMap({
       .data(regions.features)
       .join("path")
       .attr("d", path)
-      .attr("fill", getColor("landFill", dark))
+      .attr("fill", (d) => getName(d) === null ?
+        getColor("unclaimedFill", dark) : getColor("landFill")
+      )
       .attr("stroke", (d) =>
         containsChosenEvent(d)
           ? getColor("landHighlight", dark)

@@ -12,6 +12,7 @@ import {
   getClosestTimePeriod,
   yearToString
 } from "./components/lib.js";
+import { MONTHS } from "./components/lib.js";
 ```
 
 ```js
@@ -62,24 +63,10 @@ const map = await worldMap({
 
 ```js
 const date = new Date();
-const month = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December"
-][date.getMonth()];
+const month = MONTHS[date.getMonth()]["name"]
 const day = date.getDate();
 const dateString = `${month} ${day}`;
 ```
-
 # On This Day In History
 
 <span style='font-size: 1.2em'>
@@ -87,9 +74,6 @@ const dateString = `${month} ${day}`;
 </span>
 
 <div class="grid grid-cols-4">
-  <div class="grid-colspan-3" id="map">
-    ${map}
-  </div>
   <div class="card event-info">
     ${chosenEvent
       ? html`<h2>${yearToString(chosenEvent.year)}</h2>
@@ -99,5 +83,8 @@ const dateString = `${month} ${day}`;
           (<a href="https://github.com/aourednik/historical-basemaps">Source: historical-basemaps</a>)
         </small>`
       : html`<p>Click on an event to see the historical borders of the day.</p>`}
+  </div>
+  <div class="grid-colspan-3" id="map">
+    ${map}
   </div>
 </div>
