@@ -7,20 +7,28 @@ const SPARQL_ENDPOINT = "https://query.wikidata.org/sparql";
 const QIDS_PER_QUERY = 100;
 
 /**
- * Issues a SPARQL query to the Wikidata query service
- * 
+ * Issues a SPARQL query to the Wikidata query service.
+ *
+ * Sent as a URL-encoded POST (SPARQL 1.1 Protocol §2.1.2), which the query
+ * service recommends for larger queries to avoid URL length limits. The facts
+ * query lists each batch's QIDs twice, so it is large. POST results aren't
+ * cached by the service, but each day's query is unique anyway.
+ *
+ * @see {@link https://www.mediawiki.org/wiki/Wikidata_Query_Service/User_Manual#SPARQL_endpoint}
+ * @see {@link https://www.w3.org/TR/sparql11-protocol/#query-via-post-urlencoded}
  * @see {@link https://www.wikidata.org/wiki/Wikidata:SPARQL_query_service/A_gentle_introduction_to_the_Wikidata_Query_Service}
  *
  * @param {string} query A SPARQL query string
  */
 export async function sparql(query) {
-  const url = `${SPARQL_ENDPOINT}?${new URLSearchParams({ query, format: "json" })}`;
-
-  const response = await fetch(url, {
+  const response = await fetch(SPARQL_ENDPOINT, {
+    method: "POST",
     headers: {
       "User-Agent": `MapHistory/1.0 (${process.env.WIKI_USERNAME ?? ""})`,
       Accept: "application/sparql-results+json",
+      "Content-Type": "application/x-www-form-urlencoded",
     },
+    body: new URLSearchParams({ query, format: "json" }),
   });
 
   if (!response.ok) throw new Error(`SPARQL query failed: ${response.status}`);
@@ -168,31 +176,68 @@ function parsePoint(value) {
 }
 
 /**
+ * Pack groups of QIDs into batches of at most QIDS_PER_QUERY, never splitting
+ * a group. A group larger than the limit gets a batch of its own.
+ *
+ * @param {string[][]} groups
+ * @returns {string[][]}
+ */
+function packBatches(groups) {
+  /** @type {Set<string>[]} */
+  const batches = [];
+  let current = new Set();
+
+  for (const group of groups) {
+    const added = group.filter((q) => !current.has(q)).length;
+    if (current.size > 0 && current.size + added > QIDS_PER_QUERY) {
+      batches.push(current);
+      current = new Set();
+    }
+    group.forEach((q) => current.add(q));
+  }
+  if (current.size > 0) batches.push(current);
+
+  return batches.map((b) => [...b]);
+}
+
+/**
  * Fetch the facts the event-selection rules need for a set of Wikidata items.
  *
- * @param {string[]} qids e.g. ["Q116691303", "Q43"]
+ * QIDs are passed in groups, one per event, so that each event's pages are
+ * queried together.
+ *
+ * @param {string[][]} qidGroups e.g. [["Q116691303", "Q43", "Q858"], ["Q1420045", "Q1973"]]
  * @returns {Promise<[number, Map<string, ItemFacts>]>} A promised tuple containing:
  *   - The number of requests made to the query service
  *   - A map from every requested QID to its facts (empty facts if none were found)
  */
-export async function getItemFacts(qids) {
+export async function getItemFacts(qidGroups) {
+  const allQids = [...new Set(qidGroups.flat())];
+
   /** @type {Map<string, ItemFacts>} */
-  const facts = new Map(qids.map((q) => [q, emptyFacts()]));
+  const facts = new Map(allQids.map((q) => [q, emptyFacts()]));
   let requests = 0;
 
-  for (let i = 0; i < qids.length; i += QIDS_PER_QUERY) {
-    const batch = qids.slice(i, i + QIDS_PER_QUERY);
+  // A QID shared by events in different batches is queried more than once.
+  // Its own facts are the same each time, so keep only the first batch's,
+  // but collect its containment results from every batch.
+  const fetched = new Set();
+
+  for (const batch of packBatches(qidGroups)) {
     const rows = await sparql(factsQuery(batch));
     requests++;
 
     for (const row of rows) {
       // Get the list of facts for the current item.
       // It'll be appended to in this block.
-      const item = facts.get(toQid(row.item.value));
+      const qid = toQid(row.item.value);
+      const item = facts.get(qid);
       if (!item) continue;
 
       const prop = row.prop.value;
       const value = row.value.value;
+
+      if (fetched.has(qid)) continue;
 
       if (DATE_PROPERTIES.has(prop)) {
         const time = parseTime(value);
@@ -204,9 +249,9 @@ export async function getItemFacts(qids) {
           });
         }
       } else if (prop in ITEM_PROPERTIES) {
-        const qid = toQid(value);
-        if (qid) {
-          item[ITEM_PROPERTIES[prop]].push(qid);
+        const valueQid = toQid(value);
+        if (valueQid) {
+          item[ITEM_PROPERTIES[prop]].push(valueQid);
         }
       } else if (prop === "P625") { // coordinate location
         item.coordinates ??= parsePoint(value);
@@ -214,6 +259,8 @@ export async function getItemFacts(qids) {
         item.image ??= value;
       }
     }
+
+    batch.forEach((q) => fetched.add(q));
   }
 
   return [requests, facts];

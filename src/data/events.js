@@ -403,11 +403,12 @@ export async function getEventsOnDay(month, day) {
   const data = await response.json();
   const feedEvents = data.events ?? [];
 
-  // One batch of Wikidata queries for every page on this day.
-  const qids = new Set(
-    feedEvents.flatMap((e) => (e.pages ?? []).map((p) => p.wikibase_item).filter(Boolean))
-  );
-  const [wikidataRequests, facts] = await getItemFacts([...qids]);
+  // Wikidata facts for every page on this day, grouped by event so that each
+  // event's pages are queried together (needed for the containment check).
+  const qidGroups = feedEvents
+    .map((e) => [...new Set((e.pages ?? []).map((p) => p.wikibase_item).filter(Boolean))])
+    .filter((group) => group.length > 0);
+  const [wikidataRequests, facts] = await getItemFacts(qidGroups);
   const noFacts = emptyFacts();
   /** @param {FeedPage} page */
   const factsOf = (page) => facts.get(page.wikibase_item) ?? noFacts;
