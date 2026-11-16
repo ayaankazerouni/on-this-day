@@ -7,6 +7,7 @@ toc: false
 ```js
 // Load components
 import { worldMap } from "./components/map.js";
+import { timelineRuler } from "./components/timeline.js";
 import {
   getGeoData,
   getClosestTimePeriod,
@@ -62,8 +63,20 @@ const map = await worldMap({
 ```
 
 ```js
-// Take the date from the data, not the visitor's clock: the data is built once
-// a day (in UTC), so the two can disagree across time zones or if a build is late.
+// How far back today's events go, with the drawn basemap's era highlighted.
+const ruler = timelineRuler({
+  basemapYears: timePeriods,
+  eventYears: onThisDay.map((d) => d.year),
+  basemapYear: closestYear,
+  eventYear: chosenEvent?.year ?? null,
+  width,
+  dark,
+});
+```
+
+```js
+// Take the date from the data, not the visitor's clock.
+// The data is built once a day (in UTC), so the two can disagree.
 // Fall back to the visitor's date only if there's no data.
 const today = new Date();
 const month = onThisDay[0]?.month ?? MONTHS[today.getMonth()].name;
@@ -73,21 +86,37 @@ const dateString = `${month} ${day}`;
 # On This Day In History
 
 <span style='font-size: 1.2em'>
-  <em>${dateString}</em>
+  <em>${dateString} (UTC)</em>
 </span>
 
 <div class="grid grid-cols-4">
-  <div class="card event-info">
-    ${chosenEvent
-      ? html`<h2>${yearToString(chosenEvent.year)}</h2>
-        <p>${chosenEvent.description}</p>
-        <small>
-          Showing borders from ${yearToString(closestYear)}, the closest available year.
-          (<a href="https://github.com/aourednik/historical-basemaps">Source: historical-basemaps</a>)
-        </small>`
-      : html`<p>Click on an event to see the historical borders of the day.</p>`}
+  <div class="grid-colspan-1">
+    <div class="card event-info">
+      ${chosenEvent
+        ? html`${chosenEvent.page?.thumbnail
+              ? html`<a href=${chosenEvent.page.url} target="_blank" rel="noopener">
+                  <img
+                    class="event-thumbnail"
+                    src=${chosenEvent.page.thumbnail.source}
+                    alt=${chosenEvent.page.title}
+                    loading="lazy">
+                </a>`
+              : ""}
+          <h2>${chosenEvent.month} ${chosenEvent.day}, ${yearToString(chosenEvent.year)}</h2>
+          <p>${chosenEvent.description}</p>
+          ${chosenEvent.page
+            ? html`<p><a href=${chosenEvent.page.url} target="_blank" rel="noopener">
+                ${chosenEvent.page.title} on Wikipedia ↗</a></p>`
+            : ""}`
+        : html`<p>Click on an event to see the historical borders of the day.</p>`}
+    </div>
+    <p class="attribution">
+      Events from <a href="https://en.wikipedia.org/" target="_blank" rel="noopener">Wikipedia</a>
+      · <a href="https://www.wikidata.org/" target="_blank" rel="noopener">Powered by Wikidata</a>
+    </p>
   </div>
   <div class="grid-colspan-3" id="map">
+    ${ruler}
     ${map}
   </div>
 </div>

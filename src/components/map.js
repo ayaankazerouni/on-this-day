@@ -21,7 +21,7 @@ import * as topojson from "topojson-client";
  * @param {boolean} dark A reactive variable indicating dark mode.
  * @returns {string}
  */
-function getColor(key, dark = false) {
+export function getColor(key, dark = false) {
   // Mostly greyscale palette.
   return {
     landFill: dark ? "#5a5a5a" : "#c4c4c4",
@@ -123,7 +123,7 @@ export async function worldMap({
       .join("path")
       .attr("d", path)
       .attr("fill", (d) => getName(d) === null ?
-        getColor("unclaimedFill", dark) : getColor("landFill")
+        getColor("unclaimedFill", dark) : getColor("landFill", dark)
       )
       .attr("stroke", (d) =>
         containsChosenEvent(d)
@@ -131,7 +131,9 @@ export async function worldMap({
           : getColor("landStroke", dark),
       )
       .attr("stroke-width", (d) => (containsChosenEvent(d) ? 1.5 : 0.5))
-      .attr("stroke-opacity", (d) => (containsChosenEvent(d) ? 1 : 0.3))
+      // Light borders on a dark fill read fainter than dark on light, so dark
+      // mode needs a higher opacity for unselected borders to show as clearly.
+      .attr("stroke-opacity", (d) => (containsChosenEvent(d) ? 1 : dark ? 0.55 : 0.3))
       .on("mouseover", (_, d) => {
         const name = getName(d);
         if (name !== null) {
@@ -173,7 +175,9 @@ export async function worldMap({
       hideTooltip();
       onSelect(d === chosenEvent ? null : d);
     })
-    .on("mouseover", (_, d) => {
+    .on("mouseover", (event, d) => {
+      // Bring the hovered dot above any dots it overlaps.
+      d3.select(event.currentTarget).raise();
       const bce = d.year < 0 ? "BCE" : "CE";
       const date = `${d.month} ${d.day}, ${Math.abs(d.year)} ${bce}`;
       tooltip
@@ -181,7 +185,11 @@ export async function worldMap({
         .style("visibility", "visible");
     })
     .on("mousemove", moveTooltip)
-    .on("mouseout", hideTooltip);
+    .on("mouseout", () => {
+      hideTooltip();
+      // Put the chosen event's dots back on top once the hover ends.
+      dots.filter(isChosen).raise();
+    });
 
   // Draw the chosen event's dots on top of the dimmed ones.
   dots.filter(isChosen).raise();

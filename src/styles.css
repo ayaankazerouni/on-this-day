@@ -17,6 +17,14 @@ blockquote {
   color: var(--theme-foreground-alt);
 }
 
+/* Data credit at the bottom of the page. */
+.attribution {
+  max-width: none;
+  text-align: center;
+  font-size: 0.85em;
+  color: var(--theme-foreground-muted);
+}
+
 /* Info card beside the map. */
 .event-info {
   align-self: start;
@@ -28,4 +36,47 @@ blockquote {
 
 .event-info p {
   margin: 0 0 0.75rem;
+}
+
+/* Timeline ruler above the map. Text uses the theme's text colours. */
+.timeline-end-labels text {
+  font-size: 11px;
+  fill: var(--theme-foreground-muted);
+}
+
+.timeline-label {
+  font-size: 12px;
+  font-weight: 600;
+  fill: var(--theme-foreground);
+}
+
+/* SVG links don't pick up the page's link styles, so style them here. */
+.timeline-label a tspan {
+  fill: var(--theme-foreground-focus);
+  font-weight: 400;
+  text-decoration: underline;
+}
+
+.timeline-label a:hover tspan {
+  text-decoration: none;
+}
+
+.timeline-tooltip {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 13px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Lead image of the chosen event's Wikipedia page. Images from Wikidata come
+   without dimensions, so cap the height rather than relying on them. */
+.event-thumbnail {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 240px;
+  object-fit: cover;
+  border-radius: 4px;
+  margin-bottom: 0.75rem;
 }
