@@ -24,6 +24,9 @@ Ourednik emphasises:
 > * areas of civilizations actually overlap, especially in ancient history, and that
 > * overlaying these ancient vector maps on contemporary physical maps can be misleading; rivers, lakes, shorelines _do_ change very much over millennia; think for instance about the evolution of the [Aral Sea](https://en.wikipedia.org/wiki/Aral_Sea) since the 1980s.
 
-**"On this day" events**, obtained from the Wikimedia `onthisday` Feed API. See the code for this on GitHub ([`ayaankazerouni/map-history`](https://github.com/ayaankazerouni/map-history)).
-Only events with coordinates (locations) were included.
-If an event contained multiple coordinates, the event is included twice, once at each place.
+**"On this day" events**, obtained from the Wikimedia `onthisday` Feed API.
+
+Each event was mapped to _zero or more locations_ and _a Wikipedia page_ according to some heuristics.
+Each event comes with several pages linked — in the easiest case, one of those pages is "about the event", and includes coordinates.
+I used the [Wikidata query service](https://query.wikidata.org/) to guess the page that would best describe the event, and the page(s) that would best place the event on the map.
+See [the source code](https://github.com/ayaankazerouni/map-history) for details.
