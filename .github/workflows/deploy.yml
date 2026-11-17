@@ -30,13 +30,18 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          # Node 24 (from .nvmrc): Notebook Kit's Node data-loader cells fail on
+          # older Node (22.13 rejects --input-type=module-typescript), and Node
+          # 25+ blocks their fetch calls under --permission.
+          node-version-file: '.nvmrc'
           cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Build Observable Framework site
+      # The data-loader cache (src/.observable/cache) isn't committed, so every
+      # run fetches today's events afresh.
+      - name: Build Notebook Kit site
         run: npm run build
 
       - name: Upload artifact

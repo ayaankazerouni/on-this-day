@@ -1,6 +1,6 @@
-// No imports here: this module is shared by the browser (via lib.js) and by
-// Node data loaders (via src/data/events.js), so it must not depend on
-// browser-only (observablehq:stdlib) or Node-only (node:fs) modules.
+// No imports here: this module is shared by the browser (via index.html) and
+// by the Node data-loader cell (via src/data/events.js), so it must not depend
+// on browser-only or Node-only (node:fs) modules.
 
 /**
  * @example { name: "January", days: 31 }

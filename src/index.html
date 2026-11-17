@@ -1,0 +1,130 @@
+<!doctype html>
+<notebook theme="light-dark(cotton, slate)">
+  <title>On This Day</title>
+  <script type="module">
+    // Load components
+    import { worldMap } from "./components/map.js";
+    import {
+      getGeoData,
+      getClosestTimePeriod,
+      yearToString
+    } from "./components/lib.js";
+    import { MONTHS } from "./components/months.js";
+  </script>
+  <script type="application/vnd.node.javascript" output="onThisDay" format="json" hidden>
+    // Data loader: today's events, placed on the map. Runs in Node at build time.
+    import { getEventsOnDay } from "./data/events.js";
+
+    const today = new Date();
+    const [, events] = await getEventsOnDay(today.getMonth() + 1, today.getDate());
+
+    process.stdout.write(JSON.stringify(events));
+  </script>
+  <script type="application/vnd.node.javascript" output="historicalBasemaps" format="json" hidden>
+    // Data loader: the index of historical basemaps. Runs in Node at build time.
+    const response = await fetch("https://raw.githubusercontent.com/aourednik/historical-basemaps/refs/heads/master/index.json");
+
+    process.stdout.write(JSON.stringify(await response.json()));
+  </script>
+  <script type="module">
+    // Load data
+    const basemaps = historicalBasemaps.years;
+    const timePeriods = basemaps.map(d => d.year);
+    const land = await FileAttachment("data/land-50m.json").json();
+  </script>
+  <script type="module">
+    // Take the date from the data, not the visitor's clock.
+    // The data is built once a day (in UTC), so the two can disagree.
+    // Fall back to the visitor's date only if there's no data.
+    const today = new Date();
+    const month = onThisDay[0]?.month ?? MONTHS[today.getMonth()].name;
+    const day = onThisDay[0]?.day ?? today.getDate();
+    const dateString = `${month} ${day}`;
+  </script>
+  <script type="text/markdown">
+    # Today In History
+
+    <span style='font-size: 1.2em'>
+      <em>${dateString}</em>
+    </span>
+  </script>
+  <script type="text/html">
+    <div class="layout">
+      <div>
+        <div class="event-info" id="event-info"></div>
+        <p class="attribution">
+          Made with <a href="https://observablehq.github.io/notebook-kit/" target="_blank">Observable Notebook Kit</a> |
+          Powered by <a href="https://www.mediawiki.org/wiki/Wikimedia_APIs" target="_blank" rel="noopener">Wikimedia APIs</a> and <a href="https://www.wikidata.org/" target="_blank" rel="noopener">Wikidata</a> |
+          <a href="./about.html">About</a> |
+          <a href="https://github.com/ayaankazerouni/on-this-day" target="_blank">GitHub</a> |
+        </p>
+      </div>
+      <div id="map"></div>
+    </div>
+  </script>
+  <script type="module">
+    // The layout above is static HTML, so #map exists before any cell runs.
+    const mapWidth = Generators.width(document.querySelector("#map"));
+  </script>
+  <script type="module">
+    // The event selected by clicking a dot on the map (null if none).
+    // Mutable values can only be reassigned in the cell that declares them,
+    // so the setter lives here too.
+    const chosenEvent = Mutable(null);
+    const setChosenEvent = (e) => { chosenEvent.value = e; };
+  </script>
+  <script type="module">
+    // Basemap for the time period closest to the chosen event (none if nothing is chosen).
+    const closestYear = chosenEvent
+      ? getClosestTimePeriod(+chosenEvent.year, timePeriods)
+      : null;
+    const geodata = chosenEvent
+      ? await getGeoData(
+          basemaps[timePeriods.indexOf(closestYear)].filename.replace("geojson", "json")
+        )
+      : null;
+  </script>
+  <script type="module">
+    // Draw the map into the layout's #map.
+    const map = await worldMap({
+      geodata,
+      land,
+      width: mapWidth,
+      dark,
+      events: onThisDay,
+      chosenEvent,
+      onSelect: setChosenEvent,
+      // Ruler above the map: how far back today's events go,
+      // with the drawn basemap's era highlighted.
+      timeline: {
+        basemapYears: timePeriods,
+        eventYears: onThisDay.map((d) => d.year),
+        basemapYear: closestYear,
+        eventYear: chosenEvent?.year ?? null,
+      },
+    });
+    document.querySelector("#map").replaceChildren(map);
+  </script>
+  <script type="module">
+    // Fill the layout's info card with the chosen event.
+    document.querySelector("#event-info").replaceChildren(
+      chosenEvent
+        ? html`${chosenEvent.page?.thumbnail
+              ? html`<a href=${chosenEvent.page.url} target="_blank" rel="noopener">
+                  <img
+                    class="event-thumbnail"
+                    src=${chosenEvent.page.thumbnail.source}
+                    alt=${chosenEvent.page.title}
+                    loading="lazy">
+                </a>`
+              : ""}
+          <h2>${chosenEvent.month} ${chosenEvent.day}, ${yearToString(chosenEvent.year)}</h2>
+          <p>${chosenEvent.description}</p>
+          ${chosenEvent.page
+            ? html`<p><a href=${chosenEvent.page.url} target="_blank" rel="noopener">
+                ${chosenEvent.page.title} ↗</a> on Wikipedia </p>`
+            : ""}`
+        : html`<p>Click on a point in the map to see details.</p>`
+    );
+  </script>
+</notebook>

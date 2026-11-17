@@ -2,14 +2,12 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "clean": "rimraf src/.observablehq/cache",
-    "build": "observable build",
-    "dev": "observable preview",
-    "deploy": "observable deploy",
-    "observable": "observable"
+    "clean": "rimraf src/.observable/cache",
+    "build": "notebooks build --root src --template src/page.tmpl --out ../dist --empty -- src/index.html src/about.html",
+    "dev": "notebooks preview --root src --template src/page.tmpl"
   },
   "dependencies": {
-    "@observablehq/framework": "^1.13.4",
+    "@observablehq/notebook-kit": "^2.11.0",
     "d3": "^7.9.0",
     "topojson-client": "^3.1.0"
   },
@@ -17,6 +15,6 @@
     "rimraf": "^5.0.5"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=24 <25"
   }
 }

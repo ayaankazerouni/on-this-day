@@ -7,5 +7,5 @@ To run the site locally as an [Observable Framework](https://observablehq.com/fr
 Make sure you have Node installed. I'm using v22.13.1.
 
 * Install node dependencies: `npm install`
-* `npm run dev` to run the dev server at [https://localhost:3000](https://localhost:3000)
+* `npm run dev` to run the dev server at [https://localhost:5173](https://localhost:5173)
 

@@ -5,9 +5,14 @@
 
 set -e
 
+# Paths are relative to the repo root
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(dirname "$SCRIPT_DIR")"
+
 REPO_URL="https://github.com/aourednik/historical-basemaps"
-GEOJSON_DIR="tmp/geojson"
-TOPO_DIR="src/data/topo-data"
+TMP_DIR="$ROOT_DIR/tmp"
+GEOJSON_DIR="$TMP_DIR/geojson"
+TOPO_DIR="$ROOT_DIR/src/data/topo-data"
 
 echo "Downloading historical basemaps..."
 
@@ -35,10 +40,10 @@ echo ""
 echo "Converting to TopoJSON..."
 
 # Convert GeoJSON to TopoJSON
-./convert-to-topojson.sh "$GEOJSON_DIR" "$TOPO_DIR"
+"$SCRIPT_DIR/convert-to-topojson.sh" "$GEOJSON_DIR" "$TOPO_DIR"
 
 # Clean up temporary directory
-rm -rf tmp
+rm -rf $TMP_DIR
 
 echo ""
 echo "Done! TopoJSON files are in $TOPO_DIR"

@@ -54,9 +54,17 @@ find "$INPUT_DIR" -name "*.geojson" -type f | while read -r geojson_file; do
     echo "[$count/$total] Converted: $basename.geojson -> $basename.json"
 done
 
-# Calculate final size
-final_size=$(find "$OUTPUT_DIR" -name "*.json" -type f -exec du -ch {} + | grep total | awk '{print $1}')
-final_bytes=$(find "$OUTPUT_DIR" -name "*.json" -type f -exec stat -f%z {} + | awk '{s+=$1} END {print s}')
+# Calculate final size of only the files converted above, not everything in
+# OUTPUT_DIR (which may hold other JSON, e.g. places.json). Listed again here
+# because the conversion loop runs in a subshell (it's piped into), so it
+# can't collect them.
+converted=()
+while read -r geojson_file; do
+    converted+=("$OUTPUT_DIR/$(basename "$geojson_file" .geojson).json")
+done < <(find "$INPUT_DIR" -name "*.geojson" -type f)
+
+final_size=$(du -ch "${converted[@]}" | grep total | awk '{print $1}')
+final_bytes=$(stat -f%z "${converted[@]}" | awk '{s+=$1} END {print s}')
 
 # Calculate reduction
 reduction_bytes=$((initial_bytes - final_bytes))
