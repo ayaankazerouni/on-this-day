@@ -61,6 +61,8 @@ export async function sparql(query) {
  * @property {string[]} country QIDs from P17 (country).
  * @property {{lat: number, lon: number} | null} coordinates From P625 (coordinate location), if any.
  * @property {string | null} image Commons file URL (Special:FilePath) from P18 (image), if any.
+ * @property {boolean} isPlace Whether the item is an instance of a place (see PLACE_CLASSES)
+ * @property {boolean} isHuman Whether the item is an instance of a human (Q5)
  */
 
 /** @returns {ItemFacts} Facts for an item we know nothing about. */
@@ -73,6 +75,8 @@ export function emptyFacts() {
     country: [],
     coordinates: null,
     image: null,
+    isPlace: false,
+    isHuman: false,
   };
 }
 
@@ -100,6 +104,21 @@ const ITEM_PROPERTIES = {
 };
 
 /**
+ * Classes whose instances (including instances of their subclasses)
+ * count as places. A page about any of these is named by its own title.
+ * Anything else with coordinates (e.g., oil pipeline, building) is named
+ * by where it is.
+ */
+const PLACE_CLASSES = [
+  "Q486972", // human settlement
+  "Q56061", // administrative territorial entity
+  "Q6256", // country
+  "Q82794", // geographic region
+  "Q271669", // landform
+  "Q15324", // body of water
+];
+
+/**
  * Build the query for one batch of QIDs.
  *
  * Each UNION branch returns one kind of fact, with ?prop saying which. Using
@@ -110,7 +129,7 @@ const ITEM_PROPERTIES = {
  */
 function factsQuery(qids) {
   return `
-    SELECT ?item ?prop ?value ?precision WHERE {
+    SELECT ?item ?prop ?value ?precision ?valueLabel WHERE {
       VALUES ?item { ${qids.map((q) => `wd:${q}`).join(" ")} }
       {
         # Dates, via the full statement so we get precision and can skip deprecated ranks.
@@ -142,6 +161,28 @@ function factsQuery(qids) {
           ("P18" wdt:P18)    # image
         }
         ?item ?wdt ?value .
+        # English name of item values (e.g. places); other values have none.
+        OPTIONAL { ?value rdfs:label ?valueLabel . FILTER(LANG(?valueLabel) = "en") }
+      }
+      UNION
+      {
+        # Is the item a place? One row per place class that it's an instance of.
+        # Walk up from the item's classes, never down from the place classes:
+        # their subclass trees are huge. So ?value is filtered, not bound up
+        # front (which would make the planner start there), and the path is
+        # geared forward (subject to object).
+        ?item wdt:P31 ?class .
+        ?class wdt:P279* ?value .
+        hint:Prior hint:gearing "forward" .
+        FILTER(?value IN (${PLACE_CLASSES.map((q) => `wd:${q}`).join(", ")}))
+        BIND("isPlace" AS ?prop)
+      }
+      UNION
+      {
+        # Is the item a person?
+        ?item wdt:P31 ?value .
+        FILTER(?value = wd:Q5)
+        BIND("isHuman" as ?prop)
       }
     }`;
 }
@@ -207,20 +248,22 @@ function packBatches(groups) {
  * queried together.
  *
  * @param {string[][]} qidGroups e.g. [["Q116691303", "Q43", "Q858"], ["Q1420045", "Q1973"]]
- * @returns {Promise<[number, Map<string, ItemFacts>]>} A promised tuple containing:
+ * @returns {Promise<[number, Map<string, ItemFacts>, Map<string, string>]>} A promised tuple containing:
  *   - The number of requests made to the query service
  *   - A map from every requested QID to its facts (empty facts if none were found)
+ *   - A map from QIDs named in the facts (location, admin area, etc.) to their English labels
  */
 export async function getItemFacts(qidGroups) {
   const allQids = [...new Set(qidGroups.flat())];
 
   /** @type {Map<string, ItemFacts>} */
   const facts = new Map(allQids.map((q) => [q, emptyFacts()]));
+  /** @type {Map<string, string>} */
+  const labels = new Map();
   let requests = 0;
 
   // A QID shared by events in different batches is queried more than once.
-  // Its own facts are the same each time, so keep only the first batch's,
-  // but collect its containment results from every batch.
+  // Its own facts are the same each time, so keep only the first batch's.
   const fetched = new Set();
 
   for (const batch of packBatches(qidGroups)) {
@@ -245,23 +288,30 @@ export async function getItemFacts(qidGroups) {
           item.dates.push({
             ...time,
             property: prop,
-            precision: Number(row.precision.value)
+            precision: Number(row.precision.value),
           });
         }
       } else if (prop in ITEM_PROPERTIES) {
         const valueQid = toQid(value);
         if (valueQid) {
           item[ITEM_PROPERTIES[prop]].push(valueQid);
+          if (row.valueLabel) labels.set(valueQid, row.valueLabel.value);
         }
-      } else if (prop === "P625") { // coordinate location
+      } else if (prop === "P625") {
+        // coordinate location
         item.coordinates ??= parsePoint(value);
-      } else if (prop === "P18") { // image
+      } else if (prop === "P18") {
+        // image
         item.image ??= value;
+      } else if (prop === "isPlace") {
+        item.isPlace = true;
+      } else if (prop === "isHuman") {
+        item.isHuman = true;
       }
     }
 
     batch.forEach((q) => fetched.add(q));
   }
 
-  return [requests, facts];
+  return [requests, facts, labels];
 }

@@ -2,7 +2,7 @@ import * as d3 from "d3";
 import { FileAttachment } from "observablehq:stdlib";
 import * as topojson from "topojson-client";
 
-import { yearToString } from "./lib.js";
+import { escapeHtml, yearToString } from "./lib.js";
 
 /** @type {import('./lib.js').HistEvent} */
 
@@ -386,8 +386,10 @@ export async function worldMap({
   /** Show the tooltip for an event (shared by its dots and threads). */
   function showEventTooltip(d) {
     const date = `${d.month} ${d.day}, ${yearToString(d.year)}`;
+    const name = d.location?.name;
+    const place = name ? `${escapeHtml(name)} — ` : "";
     tooltip
-      .html(`<strong>${date}</strong><br/>${d.description}`)
+      .html(`<strong>${date}</strong><br/>${place}${escapeHtml(d.description)}`)
       .style("visibility", "visible");
   }
 

@@ -32,6 +32,7 @@ import { emptyFacts, getItemFacts } from "./wikidata.js";
  * @typedef {Object} Location
  * @property {string} title
  * @property {string | null} wikibaseItem
+ * @property {string | null} name The page's title if it's a place, otherwise the place it's in; null if unknown
  */
 
 /**
@@ -249,6 +250,25 @@ function findEventPage(pages, factsOf, target) {
 }
 
 /**
+ * The page to show when no page matches the event's date.
+ * Return the first page (in feed order) that is neither a person
+ * nor a place, since the event itself is neither. If every page is
+ * a person or a place, return the feed's first page.
+ * 
+ * @param {FeedPage[]} pages
+ * @param {(page: FeedPage) => ItemFacts} factsOf
+ * @returns {FeedPage}
+ */
+function fallbackPage(pages, factsOf) {
+  const other = pages.find((page) => {
+    const facts = factsOf(page);
+    return !facts.isHuman && !facts.isPlace;
+  });
+
+  return other ?? pages[0];
+}
+
+/**
  * Coordinates for a page: Wikipedia's (from the feed) first, then Wikidata's (P625, coordinate location).
  *
  * @param {FeedPage} page
@@ -302,6 +322,23 @@ function pickCoordinatePages(pages, eventPage, factsOf) {
         (other) => other !== p && containedBy(other.page).includes(p.page.wikibase_item)
       )
   );
+}
+
+/**
+ * Name of the place an item happened at: the first named location (P276),
+ * else administrative area (P131), else country (P17). Used when a dot's
+ * page isn't a place itself.
+ *
+ * @param {ItemFacts} facts
+ * @param {Map<string, string>} labels English labels by QID
+ * @returns {string | null}
+ */
+function placeNameOf(facts, labels) {
+  for (const key of ["location", "adminArea", "country"]) {
+    const named = facts[key].find((q) => labels.has(q));
+    if (named) return labels.get(named);
+  }
+  return null;
 }
 
 /**
@@ -408,7 +445,7 @@ export async function getEventsOnDay(month, day) {
   const qidGroups = feedEvents
     .map((e) => [...new Set((e.pages ?? []).map((p) => p.wikibase_item).filter(Boolean))])
     .filter((group) => group.length > 0);
-  const [wikidataRequests, facts] = await getItemFacts(qidGroups);
+  const [wikidataRequests, facts, labels] = await getItemFacts(qidGroups);
   const noFacts = emptyFacts();
   /** @param {FeedPage} page */
   const factsOf = (page) => facts.get(page.wikibase_item) ?? noFacts;
@@ -446,12 +483,13 @@ export async function getEventsOnDay(month, day) {
     else
       stats.noEventPage++;
 
-    // The page shown is the event page if found, else the feed's first page.
-    // It need not be one of the pages the dots came from.
-    const shownPage = eventPage ?? pages[0];
+    // The page shown is the event page if found, else the best guess.
+    // It need not be one of the pages from which the dots.
+    const shownPage = eventPage ?? fallbackPage(pages, factsOf);
     const page = toPage(shownPage, factsOf(shownPage));
 
     for (const dot of dots) {
+      const title = dot.page.titles?.normalized ?? dot.page.title;
       eventsOnDay.push({
         day,
         month: MONTHS[month - 1].name,
@@ -460,8 +498,11 @@ export async function getEventsOnDay(month, day) {
         latitude: dot.coordinates.lat,
         longitude: dot.coordinates.lon,
         location: {
-          title: dot.page.titles?.normalized ?? dot.page.title,
+          title,
           wikibaseItem: dot.page.wikibase_item ?? null,
+          name: !dot.page.wikibase_item || factsOf(dot.page).isPlace
+            ? title
+            : placeNameOf(factsOf(dot.page), labels),
         },
         page,
       });

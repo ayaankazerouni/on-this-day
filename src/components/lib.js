@@ -31,6 +31,14 @@ export function stripHtml(element) {
 }
 
 /**
+ * @param {string} text Plain text.
+ * @returns The text with HTML special characters escaped, safe to insert as HTML.
+ */
+export function escapeHtml(text) {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/**
  * @typedef {Object} HistEvent
  * @property {number} year
  * @property {string} description
