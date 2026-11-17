@@ -6,6 +6,6 @@ To run the site locally as an [Observable Framework](https://observablehq.com/fr
 
 Make sure you have Node installed. I'm using v22.13.1.
 
-* Install node dependencies: `npm install -g yarn && yarn` (install yarn and use yarn to install dependencies)
-* `yarn dev` to run the dev server at [https://localhost:3000](https://localhost:3000)
+* Install node dependencies: `npm install`
+* `npm run dev` to run the dev server at [https://localhost:3000](https://localhost:3000)
 
