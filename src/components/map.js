@@ -1,5 +1,4 @@
 import * as d3 from "d3";
-import { FileAttachment } from "observablehq:stdlib";
 import * as topojson from "topojson-client";
 
 import { escapeHtml, yearToString } from "./lib.js";
@@ -63,8 +62,8 @@ function sameEvent(a, b) {
 
 /**
  * @param {Object} options
- * @param {FileAttachment|Object|null} options.geodata Historical basemap
- *   (TopoJSON or a FileAttachment for it). Drawn only when non-null.
+ * @param {Object|null} options.geodata Historical basemap TopoJSON.
+ *   Drawn only when non-null.
  * @param {Object} options.land Borderless land TopoJSON (world-atlas land-50m).
  * @param {number} [options.width=1000]
  * @param {boolean} [options.dark=false]
@@ -87,11 +86,6 @@ export async function worldMap({
   onSelect = () => {},
   timeline = null,
 } = {}) {
-  // If geodata is a FileAttachment, await its JSON
-  if (geodata?.json) {
-    geodata = await geodata.json();
-  }
-
   const sphere = { type: "Sphere" };
 
   // Calculate responsive dimensions

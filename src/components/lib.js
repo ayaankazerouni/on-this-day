@@ -1,5 +1,3 @@
-import { FileAttachment } from "observablehq:stdlib";
-
 /**
  * Split the input string into words (or phrases
  * if they are quoted).
@@ -58,64 +56,6 @@ export function filterTest(searchTerms) {
   };
 }
 
-// FileAttachment requires a string literal for static analysis,
-// so we need to map filenames to FileAttachment objects manually.
-const BASEMAPS = {
-  "world_bc123000.json": FileAttachment("../data/topo-data/world_bc123000.json"),
-  "world_bc10000.json": FileAttachment("../data/topo-data/world_bc10000.json"),
-  "world_bc8000.json": FileAttachment("../data/topo-data/world_bc8000.json"),
-  "world_bc5000.json": FileAttachment("../data/topo-data/world_bc5000.json"),
-  "world_bc4000.json": FileAttachment("../data/topo-data/world_bc4000.json"),
-  "world_bc3000.json": FileAttachment("../data/topo-data/world_bc3000.json"),
-  "world_bc2000.json": FileAttachment("../data/topo-data/world_bc2000.json"),
-  "world_bc1500.json": FileAttachment("../data/topo-data/world_bc1500.json"),
-  "world_bc1000.json": FileAttachment("../data/topo-data/world_bc1000.json"),
-  "world_bc700.json": FileAttachment("../data/topo-data/world_bc700.json"),
-  "world_bc500.json": FileAttachment("../data/topo-data/world_bc500.json"),
-  "world_bc400.json": FileAttachment("../data/topo-data/world_bc400.json"),
-  "world_bc323.json": FileAttachment("../data/topo-data/world_bc323.json"),
-  "world_bc300.json": FileAttachment("../data/topo-data/world_bc300.json"),
-  "world_bc200.json": FileAttachment("../data/topo-data/world_bc200.json"),
-  "world_bc100.json": FileAttachment("../data/topo-data/world_bc100.json"),
-  "world_bc1.json": FileAttachment("../data/topo-data/world_bc1.json"),
-  "world_100.json": FileAttachment("../data/topo-data/world_100.json"),
-  "world_200.json": FileAttachment("../data/topo-data/world_200.json"),
-  "world_300.json": FileAttachment("../data/topo-data/world_300.json"),
-  "world_400.json": FileAttachment("../data/topo-data/world_400.json"),
-  "world_500.json": FileAttachment("../data/topo-data/world_500.json"),
-  "world_600.json": FileAttachment("../data/topo-data/world_600.json"),
-  "world_700.json": FileAttachment("../data/topo-data/world_700.json"),
-  "world_800.json": FileAttachment("../data/topo-data/world_800.json"),
-  "world_900.json": FileAttachment("../data/topo-data/world_900.json"),
-  "world_1000.json": FileAttachment("../data/topo-data/world_1000.json"),
-  "world_1100.json": FileAttachment("../data/topo-data/world_1100.json"),
-  "world_1200.json": FileAttachment("../data/topo-data/world_1200.json"),
-  "world_1279.json": FileAttachment("../data/topo-data/world_1279.json"),
-  "world_1300.json": FileAttachment("../data/topo-data/world_1300.json"),
-  "world_1400.json": FileAttachment("../data/topo-data/world_1400.json"),
-  "world_1492.json": FileAttachment("../data/topo-data/world_1492.json"),
-  "world_1500.json": FileAttachment("../data/topo-data/world_1500.json"),
-  "world_1530.json": FileAttachment("../data/topo-data/world_1530.json"),
-  "world_1600.json": FileAttachment("../data/topo-data/world_1600.json"),
-  "world_1650.json": FileAttachment("../data/topo-data/world_1650.json"),
-  "world_1700.json": FileAttachment("../data/topo-data/world_1700.json"),
-  "world_1715.json": FileAttachment("../data/topo-data/world_1715.json"),
-  "world_1783.json": FileAttachment("../data/topo-data/world_1783.json"),
-  "world_1800.json": FileAttachment("../data/topo-data/world_1800.json"),
-  "world_1815.json": FileAttachment("../data/topo-data/world_1815.json"),
-  "world_1880.json": FileAttachment("../data/topo-data/world_1880.json"),
-  "world_1900.json": FileAttachment("../data/topo-data/world_1900.json"),
-  "world_1914.json": FileAttachment("../data/topo-data/world_1914.json"),
-  "world_1920.json": FileAttachment("../data/topo-data/world_1920.json"),
-  "world_1930.json": FileAttachment("../data/topo-data/world_1930.json"),
-  "world_1938.json": FileAttachment("../data/topo-data/world_1938.json"),
-  "world_1945.json": FileAttachment("../data/topo-data/world_1945.json"),
-  "world_1960.json": FileAttachment("../data/topo-data/world_1960.json"),
-  "world_1994.json": FileAttachment("../data/topo-data/world_1994.json"),
-  "world_2000.json": FileAttachment("../data/topo-data/world_2000.json"),
-  "world_2010.json": FileAttachment("../data/topo-data/world_2010.json")
-};
-
 /**
  * Get the time period closest to the specified year.
  *
@@ -141,11 +81,17 @@ export function yearToString(year) {
 }
 
 /**
- * Get the GeoJSON data for a given historical basemap filename.
+ * Load the TopoJSON for a historical basemap.
  *
- * @param {string} filename
- * @returns {FileAttachment} The corresponding FileAttachment for the GeoJSON data.
+ * The URL is a template literal so that Vite bundles every file in
+ * data/topo-data/ and resolves the one named at runtime.
+ *
+ * @param {string} filename A file in data/topo-data/, e.g. "world_1914.json".
+ * @returns {Promise<Object>} The basemap's TopoJSON.
  */
-export function getGeoData(filename) {
-  return BASEMAPS[filename];
+export async function getGeoData(filename) {
+  const url = new URL(`../data/topo-data/${filename}`, import.meta.url);
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Unable to load basemap: ${filename}`);
+  return response.json();
 }

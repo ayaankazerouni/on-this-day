@@ -7,6 +7,6 @@ venv/
 testing.ipynb
 
 dist
-src/.observablehq
+src/.observable
 
 tmp/
