@@ -49,7 +49,11 @@ blockquote {
 }
 
 .event-info p {
-  margin: 0 0 0.75rem;
+  margin: 0 0 0 0;
+}
+
+.event-info p+p {
+  margin: 0.75rem 0 0 0;
 }
 
 /* Timeline ruler above the map. Text uses the theme's text colours. */

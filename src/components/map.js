@@ -129,14 +129,16 @@ export async function worldMap({
 
   if (geodata) {
     // Historical borders for the selected event's time period.
-    const regions = topojson.feature(geodata, geodata.objects.regions);
+    const regions = topojson
+      .feature(geodata, geodata.objects.regions)
+      .features.map(fixWinding);
     const point = [chosenEvent?.longitude, chosenEvent?.latitude];
     const containsChosenEvent = (d) =>
       chosenEvent !== null && d3.geoContains(d, point);
 
     g.append("g")
       .selectAll("path")
-      .data(regions.features)
+      .data(regions)
       .join("path")
       .attr("d", path)
       .attr("fill", (d) => getName(d) === null ?
@@ -398,6 +400,31 @@ export async function worldMap({
   }
 
   return container.node();
+}
+
+/**
+ * d3-geo reads a polygon's inside from its ring order: wound the wrong way,
+ * a ring encloses the rest of the globe. Some basemap regions are (e.g. Chile
+ * from 1920 on), which covers the sea and catches its clicks. So flip any
+ * polygon larger than a hemisphere. Checked per polygon, so only the bad parts
+ * of a multi-part region are flipped.
+ *
+ * @param {Object} feature A GeoJSON feature
+ * @returns {Object} The feature, with any inverted polygons rewound
+ */
+function fixWinding(feature) {
+  const fix = (rings) =>
+    d3.geoArea({ type: "Polygon", coordinates: rings }) > 2 * Math.PI
+      ? rings.map((ring) => [...ring].reverse())
+      : rings;
+  const g = feature.geometry;
+  if (g?.type === "Polygon") {
+    return { ...feature, geometry: { ...g, coordinates: fix(g.coordinates) } };
+  }
+  if (g?.type === "MultiPolygon") {
+    return { ...feature, geometry: { ...g, coordinates: g.coordinates.map(fix) } };
+  }
+  return feature;
 }
 
 /**
