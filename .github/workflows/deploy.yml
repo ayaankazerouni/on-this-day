@@ -34,15 +34,15 @@ jobs:
           # older Node (22.13 rejects --input-type=module-typescript), and Node
           # 25+ blocks their fetch calls under --permission.
           node-version-file: '.nvmrc'
-          cache: 'yarn'
+          cache: 'npm'
 
       - name: Install dependencies
-        run: yarn install --frozen-lockfile
+        run: npm ci
 
       # The data-loader cache (src/.observable/cache) isn't committed, so every
       # run fetches today's events afresh.
       - name: Build Notebook Kit site
-        run: yarn build
+        run: npm run build
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
