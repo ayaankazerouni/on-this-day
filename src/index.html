@@ -7,6 +7,7 @@
     import {
       getGeoData,
       getClosestTimePeriod,
+      basemapRangeToString,
       yearToString
     } from "./components/lib.js";
     import { MONTHS } from "./components/months.js";
@@ -59,7 +60,10 @@
           <a href="https://github.com/ayaankazerouni/on-this-day" target="_blank">GitHub</a> |
         </p>
       </div>
-      <div id="map"></div>
+      <div class="map-column">
+        <div id="map"></div>
+        <p class="attribution basemap-source" id="basemap-source"></p>
+      </div>
     </div>
   </script>
   <script type="module">
@@ -71,7 +75,25 @@
     // Mutable values can only be reassigned in the cell that declares them,
     // so the setter lives here too.
     const chosenEvent = Mutable(null);
-    const setChosenEvent = (e) => { chosenEvent.value = e; };
+    // Skip no-op changes, so e.g. clicking the page with nothing chosen
+    // doesn't re-render the map.
+    const setChosenEvent = (e) => {
+      if (e !== chosenEvent.value) chosenEvent.value = e;
+    };
+  </script>
+  <script type="module">
+    // Clicking anywhere on the page clears the selection. Clicks that choose
+    // an event (dots, threads, ticks) or pin the threads stop before reaching
+    // the document. Links and the info card are spared, so following a link
+    // or selecting the card's text doesn't dismiss it.
+    {
+      const deselect = (event) => {
+        if (event.target.closest("a, .event-info")) return;
+        setChosenEvent(null);
+      };
+      document.addEventListener("click", deselect);
+      invalidation.then(() => document.removeEventListener("click", deselect));
+    }
   </script>
   <script type="module">
     // Basemap for the time period closest to the chosen event (none if nothing is chosen).
@@ -94,16 +116,23 @@
       events: onThisDay,
       chosenEvent,
       onSelect: setChosenEvent,
-      // Ruler above the map: how far back today's events go,
-      // with the drawn basemap's era highlighted.
+      // Ruler above the map: how far back today's events go.
       timeline: {
         basemapYears: timePeriods,
         eventYears: onThisDay.map((d) => d.year),
-        basemapYear: closestYear,
         eventYear: chosenEvent?.year ?? null,
       },
     });
     document.querySelector("#map").replaceChildren(map);
+  </script>
+  <script type="module">
+    // Credit the historical borders beneath the map, only while they're drawn,
+    // with the range of years the drawn basemap stands in for.
+    document.querySelector("#basemap-source").replaceChildren(
+      chosenEvent && geodata
+        ? html`Map borders for ${basemapRangeToString(closestYear, timePeriods)}, from <a href="https://github.com/aourednik/historical-basemaps" target="_blank" rel="noopener"><span class="github-mark" aria-hidden="true"></span>aourednik/historical-basemaps</a>`
+        : ""
+    );
   </script>
   <script type="module">
     // Fill the layout's info card with the chosen event.

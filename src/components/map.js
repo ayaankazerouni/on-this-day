@@ -116,25 +116,20 @@ export async function worldMap({
 
   const path = d3.geoPath(projection);
 
-  // Sea. Clicking it clears the selection.
+  // Sea. (Clicking it, like anywhere else on the page, clears the selection;
+  // the page handles that.)
   g.append("path")
     .datum(sphere)
     .attr("fill", getColor("seaFill", dark))
     .attr("stroke", getColor("sphereStroke", dark))
     .attr("stroke-width", 1)
-    .attr("d", path)
-    .on("click", () => {
-      if (chosenEvent) onSelect(null);
-    });
+    .attr("d", path);
 
   if (geodata) {
     // Historical borders for the selected event's time period.
     const regions = topojson
       .feature(geodata, geodata.objects.regions)
       .features.map(fixWinding);
-    const point = [chosenEvent?.longitude, chosenEvent?.latitude];
-    const containsChosenEvent = (d) =>
-      chosenEvent !== null && d3.geoContains(d, point);
 
     g.append("g")
       .selectAll("path")
@@ -144,15 +139,11 @@ export async function worldMap({
       .attr("fill", (d) => getName(d) === null ?
         getColor("unclaimedFill", dark) : getColor("landFill", dark)
       )
-      .attr("stroke", (d) =>
-        containsChosenEvent(d)
-          ? getColor("landHighlight", dark)
-          : getColor("landStroke", dark),
+      .attr("stroke", getColor("landStroke", dark),
       )
-      .attr("stroke-width", (d) => (containsChosenEvent(d) ? 1 : 0.5))
+      .attr("stroke-width", 0.2)
       // Light borders on a dark fill read fainter than dark on light, so dark
       // mode needs a higher opacity for unselected borders to show as clearly.
-      .attr("stroke-opacity", (d) => (containsChosenEvent(d) ? 1 : dark ? 0.55 : 0.3))
       .on("mouseover", (_, d) => {
         const name = getName(d);
         if (name !== null) {
@@ -166,7 +157,8 @@ export async function worldMap({
     g.append("path")
       .datum(topojson.feature(land, land.objects.land))
       .attr("fill", getColor("landFill", dark))
-      .attr("stroke", "none")
+      .attr("stroke", getColor("landStroke", dark))
+      .attr("stroke-width", 0.2)
       .attr("d", path)
       .style("pointer-events", "none");
   }
@@ -191,7 +183,7 @@ export async function worldMap({
     )
     .attr("stroke", getColor("pointStroke", dark))
     .attr("r", (d) => (isChosen(d) ? 8 : 5))
-    .attr("opacity", (d) => (chosenEvent && !isChosen(d) ? 0.3 : 0.8))
+    .attr("opacity", (d) => (chosenEvent && !isChosen(d) ? 0.5 : 1))
     .style("cursor", "pointer")
     .attr(
       "transform",
@@ -218,9 +210,14 @@ export async function worldMap({
   // Draw the chosen event's dots on top of the dimmed ones.
   dots.filter(isChosen).raise();
 
-  // Timeline ruler in the band above the map.
+  // Timeline ruler in the band above the map. Drawn beneath `g`, so the
+  // threads' upper ends lie on top of it and catch the mouse there.
   if (rulerHeight) {
-    const ruler = drawTimelineRuler(container.append("g"), { ...timeline, width, dark });
+    const ruler = drawTimelineRuler(container.insert("g", ":first-child"), {
+      ...timeline,
+      width,
+      dark,
+    });
     drawThreads(ruler);
   }
 
@@ -267,26 +264,49 @@ export async function worldMap({
       // "visibleStroke", not "stroke": plain "stroke" catches the mouse even
       // while the path is hidden.
       .style("pointer-events", "visibleStroke")
-      .style("cursor", "pointer")
-      .on("mouseover", (_, d) => {
-        hoveredEvent = d;
-        update();
-        dots.filter((p) => sameEvent(p, d)).raise();
-        showEventTooltip(d);
-      })
-      .on("mousemove", moveTooltip)
-      .on("mouseout", () => {
-        hoveredEvent = null;
-        update();
-        hideTooltip();
-        dots.filter(isChosen).raise();
-      })
-      .on("click", (event, d) => {
-        // Don't let the click reach the sea, which would clear the selection.
-        event.stopPropagation();
-        hideTooltip();
-        onSelect(isChosen(d) ? null : d);
-      });
+      .call(hoverAndSelect);
+
+    // Transparent hit targets over the barcode's ticks, so a tick can be
+    // hovered and clicked like its event's thread, whether or not the threads
+    // are showing.
+    ruler.group
+      .append("g")
+      .selectAll("line")
+      .data(events)
+      .join("line")
+      .attr("x1", (d) => ruler.x(d.year))
+      .attr("x2", (d) => ruler.x(d.year))
+      .attr("y1", ruler.baselineY - BARCODE_TICK.halfHeight)
+      .attr("y2", ruler.baselineY + BARCODE_TICK.halfHeight)
+      .attr("stroke", "transparent")
+      .attr("stroke-width", THREAD_HIT_WIDTH)
+      .call(hoverAndSelect);
+
+    /** Hovering highlights the event's threads and dots; clicking (de)selects it. */
+    function hoverAndSelect(selection) {
+      selection
+        .style("cursor", "pointer")
+        .on("mouseover", (_, d) => {
+          hoveredEvent = d;
+          update();
+          dots.filter((p) => sameEvent(p, d)).raise();
+          showEventTooltip(d);
+        })
+        .on("mousemove", moveTooltip)
+        .on("mouseout", () => {
+          hoveredEvent = null;
+          update();
+          hideTooltip();
+          dots.filter(isChosen).raise();
+        })
+        .on("click", (event, d) => {
+          // Don't let the click reach the sea, which would clear the selection,
+          // or the ruler, which would toggle the pin.
+          event.stopPropagation();
+          hideTooltip();
+          onSelect(isChosen(d) ? null : d);
+        });
+    }
 
     // Marker and year label on the ruler for the hovered thread's event.
     const hoverMark = ruler.group
@@ -295,15 +315,16 @@ export async function worldMap({
       .style("pointer-events", "none");
     const hoverTick = hoverMark
       .append("line")
-      .attr("y1", ruler.baselineY - 8)
-      .attr("y2", ruler.baselineY + 8)
+      // Taller than the barcode's ticks, so it stands out from them.
+      .attr("y1", ruler.baselineY - 10)
+      .attr("y2", ruler.baselineY + 10)
       .attr("stroke", getColor("landHighlight", dark))
       .attr("stroke-width", 1.5)
       .attr("stroke-opacity", 0.6);
     const hoverLabel = hoverMark
       .append("text")
       .attr("class", "timeline-hover-label")
-      .attr("y", ruler.baselineY - 10);
+      .attr("y", ruler.baselineY - 12);
 
     let hovering = false;
     /** @type {HistEvent | null} The event whose thread is under the mouse. */
@@ -343,7 +364,8 @@ export async function worldMap({
         hoverMark.attr("visibility", "hidden");
       }
 
-      // Lock: open on hover, closed while pinned. Pinning also thickens the ruler.
+      // Lock: open on hover, closed while pinned. Pinning also darkens the barcode
+      // and thickens the baseline.
       ruler.lock.group.attr("visibility", threadsPinned || hovering ? "visible" : "hidden");
       ruler.lock.shackle.attr("d", threadsPinned ? SHACKLE_CLOSED : SHACKLE_OPEN);
       // Shine while pinned and hovered: clicking here would act on this lock.
@@ -352,6 +374,10 @@ export async function worldMap({
         .attr("filter", shine ? `url(#${ruler.lock.glowId})` : null)
         .attr("opacity", shine ? 1 : 0.8)
         .style("transform", shine ? `scale(${LOCK_SHINE_SCALE})` : null);
+      ruler.barcode.attr(
+        "stroke-opacity",
+        threadsPinned ? BARCODE_OPACITY.pinned : BARCODE_OPACITY.unpinned,
+      );
       ruler.baseline.attr(
         "stroke-width",
         threadsPinned ? BASELINE_WIDTH.pinned : BASELINE_WIDTH.unpinned,
@@ -359,19 +385,25 @@ export async function worldMap({
       ruler.group.attr("aria-pressed", threadsPinned);
     }
 
+    // The ruler counts as hovered while the pointer is in its band, judged by
+    // position rather than by ruler.group's mouseenter/leave: threads draw on
+    // top of the ruler, so moving onto one would "leave" the ruler, hiding the
+    // threads (and the one under the pointer with them).
+    const setHovering = (value) => {
+      if (value === hovering) return;
+      hovering = value;
+      update();
+    };
+    container
+      .on("mousemove.ruler", (event) => setHovering(d3.pointer(event)[1] < rulerHeight))
+      .on("mouseleave.ruler", () => setHovering(false));
+
     ruler.group
       .style("cursor", "pointer")
-      .on("mouseenter", () => {
-        hovering = true;
-        update();
-      })
-      .on("mouseleave", () => {
-        hovering = false;
-        update();
-      })
       .on("click", (event) => {
-        // Let the basemaps source link work without toggling the pin.
-        if (event.target.closest("a")) return;
+        // Pinning shouldn't also clear the selection, which the page does on
+        // any click that reaches it.
+        event.stopPropagation();
         threadsPinned = !threadsPinned;
         update();
       });
@@ -494,12 +526,7 @@ const RULER_HEIGHT = 56;
 const MARGIN_X = 40;
 const BASELINE_Y = 34;
 
-const BASEMAPS_SOURCE_URL = "https://github.com/aourednik/historical-basemaps";
-
-/** Narrowest the blurred band is drawn, in pixels, so it stays visible on wide domains. */
-const MIN_BAND_PX = 10;
-
-/** Distance from the right end of the baseline to the padlock's centre, in pixels. */
+/** Distance from the right end of the ruler to the padlock's centre, in pixels. */
 const LOCK_OFFSET_X = 16;
 
 /**
@@ -523,10 +550,23 @@ const THREAD_HIT_WIDTH = 7;
 /** How much the padlock grows while it shines. */
 const LOCK_SHINE_SCALE = 1.15;
 
-/** Baseline stroke width when the threads are unpinned and pinned. */
-const BASELINE_WIDTH = { unpinned: 1, pinned: 2.5 };
+/**
+ * Barcode ticks, one per event: stroke width (thicker than a hairline, thinner
+ * than THREAD_HIT_WIDTH) and half-height, in pixels.
+ */
+const BARCODE_TICK = { width: 3, halfHeight: 7 };
 
-/** Each ruler gets its own blur filter id, so re-renders (e.g. a theme change) don't clash. */
+/**
+ * Opacity of each barcode tick when the threads are unpinned and pinned. Low,
+ * so the barcode stays in the background, and so overlapping ticks (several
+ * events in close years) read darker.
+ */
+const BARCODE_OPACITY = { unpinned: 0.35, pinned: 0.6 };
+
+/** Baseline stroke width when the threads are unpinned and pinned; under BARCODE_TICK.width. */
+const BASELINE_WIDTH = { unpinned: 1, pinned: 2 };
+
+/** Each ruler gets its own filter ids, so re-renders (e.g. a theme change) don't clash. */
 let filterCount = 0;
 
 /**
@@ -541,30 +581,12 @@ function closest(year, years) {
 }
 
 /**
- * The range of years for which `basemapYear` is the closest basemap, i.e.
- * every event year in this range is drawn on this basemap. Runs from halfway
- * to the previous basemap year to halfway to the next one; open-ended at the
- * first and last basemap.
- *
- * @param {number} basemapYear
- * @param {number[]} years Basemap years, sorted ascending.
- * @returns {[number, number]}
- */
-function basemapRange(basemapYear, years) {
-  const i = years.indexOf(basemapYear);
-  const lo = i > 0 ? (years[i - 1] + basemapYear) / 2 : -Infinity;
-  const hi = i < years.length - 1 ? (basemapYear + years[i + 1]) / 2 : Infinity;
-  return [lo, hi];
-}
-
-/**
  * A horizontal ruler showing how far back in history today's events go.
  *
  * - The domain spans the day's earliest to latest event, extended to include
  *   the basemaps those events are drawn on.
- * - When an event is chosen, a blurred band marks the years its basemap
- *   stands in for (fuzzy on purpose: borders aren't a precise date), and a
- *   crisp marker shows the event's own year.
+ * - A barcode marks each event's year.
+ * - When an event is chosen, a crisp marker shows its year.
  *
  * Draws into `parent`, a group inside a larger SVG (the map's), occupying a
  * band RULER_HEIGHT tall from the group's origin.
@@ -573,7 +595,6 @@ function basemapRange(basemapYear, years) {
  * @param {Object} options
  * @param {number[]} options.basemapYears Years with a basemap.
  * @param {number[]} options.eventYears Years of the day's events.
- * @param {number | null} [options.basemapYear=null] The basemap currently drawn, if any.
  * @param {number | null} [options.eventYear=null] The chosen event's year, if any.
  * @param {number} [options.width=1000]
  * @param {boolean} [options.dark=false]
@@ -587,7 +608,6 @@ function drawTimelineRuler(
   {
     basemapYears,
     eventYears,
-    basemapYear = null,
     eventYear = null,
     width = 1000,
     dark = false,
@@ -612,7 +632,6 @@ function drawTimelineRuler(
   const label = [
     `Timeline from ${yearToString(lo)} to ${yearToString(hi)}`,
     eventYear !== null ? `, chosen event in ${yearToString(eventYear)}` : "",
-    basemapYear !== null ? `, borders from about ${yearToString(basemapYear)}` : "",
   ].join("");
 
   // Named `svg` for brevity; it's a group within the shared SVG.
@@ -630,45 +649,8 @@ function drawTimelineRuler(
     .attr("height", RULER_HEIGHT)
     .attr("fill", "transparent");
 
-  // Blurred band for the drawn basemap.
-  if (basemapYear !== null) {
-    const filterId = `timeline-blur-${++filterCount}`;
-    svg
-      .append("defs")
-      .append("filter")
-      .attr("id", filterId)
-      // Room for the blur to spread past the band without being clipped.
-      .attr("filterUnits", "userSpaceOnUse")
-      .attr("x", -width)
-      .attr("y", -RULER_HEIGHT)
-      .attr("width", width * 3)
-      .attr("height", RULER_HEIGHT * 3)
-      .append("feGaussianBlur")
-      .attr("stdDeviation", 4);
-
-    const [rangeLo, rangeHi] = basemapRange(basemapYear, years);
-    let x0 = x(Math.max(rangeLo, lo));
-    let x1 = x(Math.min(rangeHi, hi));
-    if (x1 - x0 < MIN_BAND_PX) {
-      const mid = (x0 + x1) / 2;
-      x0 = mid - MIN_BAND_PX / 2;
-      x1 = mid + MIN_BAND_PX / 2;
-    }
-
-    svg
-      .append("rect")
-      .attr("x", x0)
-      .attr("width", x1 - x0)
-      .attr("y", BASELINE_Y - 10)
-      .attr("height", 20)
-      .attr("rx", 6)
-      .attr("fill", getColor("landHighlight", dark))
-      .attr("opacity", 0.3)
-      .attr("filter", `url(#${filterId})`)
-      .style("pointer-events", "none");
-  }
-
-  // Baseline.
+  // Baseline through the whole domain, beneath the ticks: holds a sparse
+  // barcode together and shows the ruler is one thing to point at.
   const baseline = svg
     .append("line")
     .attr("x1", x(lo))
@@ -676,7 +658,25 @@ function drawTimelineRuler(
     .attr("y1", BASELINE_Y)
     .attr("y2", BASELINE_Y)
     .attr("stroke", getColor("landStroke", dark))
-    .attr("stroke-opacity", 0.5);
+    .attr("stroke-opacity", 0.5)
+    .attr("stroke-width", BASELINE_WIDTH.unpinned)
+    .style("pointer-events", "none");
+
+  // Barcode: a tick at each event's year.
+  const barcode = svg
+    .append("g")
+    .attr("stroke", getColor("landStroke", dark))
+    .attr("stroke-width", BARCODE_TICK.width)
+    .attr("stroke-opacity", BARCODE_OPACITY.unpinned)
+    .style("pointer-events", "none");
+  barcode
+    .selectAll("line")
+    .data(eventYears.filter(inDomain))
+    .join("line")
+    .attr("x1", (y) => x(y))
+    .attr("x2", (y) => x(y))
+    .attr("y1", BASELINE_Y - BARCODE_TICK.halfHeight)
+    .attr("y2", BASELINE_Y + BARCODE_TICK.halfHeight);
 
   // Crisp marker for the chosen event's year, echoing its dot on the map.
   if (eventYear !== null && inDomain(eventYear)) {
@@ -711,37 +711,7 @@ function drawTimelineRuler(
     .attr("text-anchor", ([, anchor]) => anchor)
     .text(([y]) => yearToString(y));
 
-  // One combined label above, so the event and basemap labels can't collide.
-  if (eventYear !== null || basemapYear !== null) {
-    const parts = [];
-    if (basemapYear !== null) parts.push(`Borders from ~${yearToString(basemapYear)}`);
-
-    const at = x(eventYear ?? basemapYear);
-    const anchor = at < width * 0.2 ? "start" : at > width * 0.8 ? "end" : "middle";
-    const text = svg
-      .append("text")
-      .attr("class", "timeline-label")
-      .attr("x", at)
-      .attr("y", 12)
-      .attr("text-anchor", anchor);
-
-    text.append("tspan").text(parts.join(" · "));
-
-    // Credit the basemaps alongside the year they're drawn from.
-    if (basemapYear !== null) {
-      text.append("tspan").text(" (");
-      text
-        .append("a")
-        .attr("href", BASEMAPS_SOURCE_URL)
-        .attr("target", "_blank")
-        .attr("rel", "noopener")
-        .append("tspan")
-        .text("source");
-      text.append("tspan").text(")");
-    }
-  }
-
-  // Padlock just past the right end of the baseline, showing whether the
+  // Padlock just past the right end of the ruler, showing whether the
   // threads are pinned. Hidden until the caller shows it.
   const lock = svg
     .append("g")
@@ -805,6 +775,7 @@ function drawTimelineRuler(
     x,
     baselineY: BASELINE_Y,
     group: svg,
+    barcode,
     baseline,
     lock: { group: lock, icon, shackle, glowId },
   };

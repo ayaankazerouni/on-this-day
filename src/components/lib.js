@@ -70,6 +70,27 @@ export function getClosestTimePeriod(year, years) {
 }
 
 /**
+ * Describe the range of years a basemap stands in for: those for which it is
+ * the closest basemap (see getClosestTimePeriod). The range runs from halfway
+ * to the previous basemap year to halfway to the next one, and is open-ended
+ * at the first and last basemap.
+ *
+ * @param {number} basemapYear
+ * @param {number[]} years All basemap years.
+ * @returns {string} For example, "years ~1897 CE to ~1917 CE".
+ */
+export function basemapRangeToString(basemapYear, years) {
+  const sorted = [...years].sort((a, b) => a - b);
+  const i = sorted.indexOf(basemapYear);
+  const fmt = (y) => `~${yearToString(Math.round(y))}`;
+  const lo = i > 0 ? fmt((sorted[i - 1] + basemapYear) / 2) : null;
+  const hi = i < sorted.length - 1 ? fmt((basemapYear + sorted[i + 1]) / 2) : null;
+  if (lo === null) return `years before ${hi}`;
+  if (hi === null) return `years from ${lo} on`;
+  return `years ${lo} to ${hi}`;
+}
+
+/**
  * Get the year as a string.
  * @param {number} year
  * @returns {string} A string representation of the year. For example:

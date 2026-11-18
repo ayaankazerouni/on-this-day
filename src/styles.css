@@ -31,8 +31,26 @@ blockquote {
 
 /* Grid items default to min-width: auto, which would stop #map shrinking
    below the SVG's current width, so its measured width could never go down. */
+.map-column,
 #map {
   min-width: 0;
+}
+
+/* Basemap credit beneath the map; empty unless borders are drawn. */
+.basemap-source {
+  margin: 0 0 0 0;
+}
+
+/* GitHub logo before a link to a repository. A mask rather than an <img>, so
+   it takes the link's colour in both themes. */
+.github-mark {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  margin-right: 0.25em;
+  vertical-align: -0.125em;
+  background-color: currentColor;
+  mask: url("./assets/github-mark.svg") no-repeat center / contain;
 }
 
 /* Info card beside the map. */
@@ -71,23 +89,6 @@ blockquote {
 .timeline-hover-label {
   font-size: 11px;
   fill: var(--theme-foreground);
-}
-
-.timeline-label {
-  font-size: 12px;
-  font-weight: 600;
-  fill: var(--theme-foreground);
-}
-
-/* SVG links don't pick up the page's link styles, so style them here. */
-.timeline-label a tspan {
-  fill: var(--theme-foreground-focus);
-  font-weight: 400;
-  text-decoration: underline;
-}
-
-.timeline-label a:hover tspan {
-  text-decoration: none;
 }
 
 /* Lead image of the chosen event's Wikipedia page. Images from Wikidata come
