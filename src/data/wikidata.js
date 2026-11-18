@@ -1,3 +1,5 @@
+import { USER_AGENT } from "./user-agent.js";
+
 const SPARQL_ENDPOINT = "https://query.wikidata.org/sparql";
 
 /**
@@ -24,7 +26,7 @@ export async function sparql(query) {
   const response = await fetch(SPARQL_ENDPOINT, {
     method: "POST",
     headers: {
-      "User-Agent": `MapHistory/1.0 (${process.env.WIKI_USERNAME ?? ""})`,
+      "User-Agent": USER_AGENT,
       Accept: "application/sparql-results+json",
       "Content-Type": "application/x-www-form-urlencoded",
     },

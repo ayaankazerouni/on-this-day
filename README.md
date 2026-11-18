@@ -7,6 +7,7 @@ To run the site locally as an [Observable Notebook-Kit](https://observablehq.com
 Make sure you have Node v24 installed. I'm using v24.22.3.
 
 * Install node dependencies: `npm install`
+* Set `WIKI_USERNAME` to your Wikimedia username or your email address. It's sent to Wikimedia's APIs as contact information, and `npm run dev` and `npm run build` refuse to start without it.
 * `npm run dev` to run the dev server at [https://localhost:5173](https://localhost:5173)
 
 ## Basemaps

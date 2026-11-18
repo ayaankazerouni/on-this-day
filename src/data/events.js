@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { MONTHS } from "../components/months.js";
+import { USER_AGENT } from "./user-agent.js";
 import { emptyFacts, getItemFacts } from "./wikidata.js";
 
 /**
@@ -430,10 +431,7 @@ export async function getEventsOnDay(month, day) {
 
   const url = `https://api.wikimedia.org/feed/v1/wikipedia/en/onthisday/events/${month}/${day}`;
 
-  const headers = {
-    "User-Agent": `MapHistory/1.0 (${process.env.WIKI_USERNAME ?? ""})`
-  };
-  const response = await fetch(url, { headers });
+  const response = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
   if (!response.ok) {
     throw new Error(`Request to ${url} failed: ${response.status} ${response.statusText}`);
   }

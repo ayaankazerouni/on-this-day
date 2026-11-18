@@ -3,6 +3,8 @@
   "private": true,
   "scripts": {
     "clean": "rimraf src/.observable/cache",
+    "prebuild": "node check-env.js",
+    "predev": "node check-env.js",
     "build": "notebooks build --root src --template src/page.tmpl --out ../dist --empty -- src/index.html src/about.html",
     "dev": "notebooks preview --root src --template src/page.tmpl"
   },
