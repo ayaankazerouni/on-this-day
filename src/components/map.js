@@ -47,7 +47,7 @@ const tooltip = getTooltipElement();
 /**
  * Whether the ruler's threads are pinned (by clicking the ruler). Kept here
  * rather than as page state so that toggling it doesn't re-render the map, and
- * so it survives the re-renders that choosing an event causes.
+ * so it survives the re-renders caused by changing the chosen event.
  */
 let threadsPinned = false;
 
@@ -73,7 +73,7 @@ function sameEvent(a, b) {
  *   clicked event, or null to clear the selection.
  * @param {Object | null} [options.timeline=null] If given, a timeline ruler is
  *   drawn in a band above the map, in the same SVG. Takes the options of
- *   drawTimelineRuler, minus width and dark.
+ *   drawTimelineRuler, minus events, width and dark.
  * @returns {SVGSVGElement}
  */
 export async function worldMap({
@@ -90,7 +90,7 @@ export async function worldMap({
 
   // Calculate responsive dimensions
   const height = width * 0.6; // Maintain aspect ratio
-  const rulerHeight = timeline?.eventYears.length ? RULER_HEIGHT : 0;
+  const rulerHeight = timeline && events.length ? RULER_HEIGHT : 0;
 
   // Create projection with responsive scale
   const padding = 20;
@@ -107,17 +107,15 @@ export async function worldMap({
     .attr("width", width)
     .attr("height", rulerHeight + height)
     .style("display", "block")
-    // The ruler's top label can overhang the band at either end.
     .style("overflow", "visible");
 
   // The map sits below the ruler's band. Anything that should draw between
   // the land and the dots (e.g. threads to the ruler) belongs in this group.
-  const g = container.append("g").attr("transform", `translate(0,${rulerHeight})`);
+  const g = container.append("g").attr("transform", `translate(0, ${rulerHeight})`);
 
   const path = d3.geoPath(projection);
 
-  // Sea. (Clicking it, like anywhere else on the page, clears the selection;
-  // the page handles that.)
+  // Sea. Clicking it clears the event selection.
   g.append("path")
     .datum(sphere)
     .attr("fill", getColor("seaFill", dark))
@@ -131,6 +129,7 @@ export async function worldMap({
       .feature(geodata, geodata.objects.regions)
       .features.map(fixWinding);
 
+    // Country/empire/region borders from historical-basemaps.
     g.append("g")
       .selectAll("path")
       .data(regions)
@@ -153,7 +152,7 @@ export async function worldMap({
       .on("mousemove", moveTooltip)
       .on("mouseout", hideTooltip);
   } else {
-    // No selection: plain land, no borders.
+    // Just land.
     g.append("path")
       .datum(topojson.feature(land, land.objects.land))
       .attr("fill", getColor("landFill", dark))
@@ -178,12 +177,10 @@ export async function worldMap({
     .selectAll("circle")
     .data(events)
     .join("circle")
-    .attr("fill", (d) =>
-      isChosen(d) ? getColor("landHighlight", dark) : getColor("pointFill", dark),
-    )
+    .attr("fill", getColor("pointFill", dark))
     .attr("stroke", getColor("pointStroke", dark))
-    .attr("r", (d) => (isChosen(d) ? 8 : 5))
-    .attr("opacity", (d) => (chosenEvent && !isChosen(d) ? 0.5 : 1))
+    .attr("r", (d) => isChosen(d) ? 8 : 5)
+    .attr("opacity", (d) => chosenEvent && !isChosen(d) ? 0.5 : 1)
     .style("cursor", "pointer")
     .attr(
       "transform",
@@ -215,6 +212,7 @@ export async function worldMap({
   if (rulerHeight) {
     const ruler = drawTimelineRuler(container.insert("g", ":first-child"), {
       ...timeline,
+      events,
       width,
       dark,
     });
@@ -266,21 +264,9 @@ export async function worldMap({
       .style("pointer-events", "visibleStroke")
       .call(hoverAndSelect);
 
-    // Transparent hit targets over the barcode's ticks, so a tick can be
-    // hovered and clicked like its event's thread, whether or not the threads
-    // are showing.
-    ruler.group
-      .append("g")
-      .selectAll("line")
-      .data(events)
-      .join("line")
-      .attr("x1", (d) => ruler.x(d.year))
-      .attr("x2", (d) => ruler.x(d.year))
-      .attr("y1", ruler.baselineY - BARCODE_TICK.halfHeight)
-      .attr("y2", ruler.baselineY + BARCODE_TICK.halfHeight)
-      .attr("stroke", "transparent")
-      .attr("stroke-width", THREAD_HIT_WIDTH)
-      .call(hoverAndSelect);
+    // A barcode tick can be hovered and clicked like its event's thread,
+    // whether or not the threads are showing.
+    ruler.ticks.call(hoverAndSelect);
 
     /** Hovering highlights the event's threads and dots; clicking (de)selects it. */
     function hoverAndSelect(selection) {
@@ -435,12 +421,17 @@ export async function worldMap({
 }
 
 /**
- * d3-geo reads a polygon's inside from its ring order: wound the wrong way,
- * a ring encloses the rest of the globe. Some basemap regions are (e.g. Chile
- * from 1920 on), which covers the sea and catches its clicks. So flip any
- * polygon larger than a hemisphere. Checked per polygon, so only the bad parts
- * of a multi-part region are flipped.
- *
+ * Fix winding order for regions larger than a hemisphere.
+ * 
+ * d3-geo uses a winding order convention (exterior ring for regions
+ * smaller than a hemisphere must be clockwise; exterior ring for regions
+ * larger than a hemisphere must be anticlockwise).
+ * 
+ * Some of the basemap regions are wound the wrong way, so their "inside"
+ * encompasses the rest of the globe instead of the region itself.
+ * 
+ * @see {@link https://d3js.org/d3-geo}
+ * 
  * @param {Object} feature A GeoJSON feature
  * @returns {Object} The feature, with any inverted polygons rewound
  */
@@ -544,7 +535,10 @@ const THREAD_STYLE = {
   normal: { width: 0.75, opacity: 0.15 },
 };
 
-/** Width of the invisible stroke that catches the mouse for each thread, in pixels. */
+/**
+ * Width of the invisible stroke that catches the mouse for each thread and
+ * barcode tick, in pixels.
+ */
 const THREAD_HIT_WIDTH = 7;
 
 /** How much the padlock grows while it shines. */
@@ -594,31 +588,31 @@ function closest(year, years) {
  * @param {d3.Selection<SVGGElement>} parent The group to draw into.
  * @param {Object} options
  * @param {number[]} options.basemapYears Years with a basemap.
- * @param {number[]} options.eventYears Years of the day's events.
+ * @param {HistEvent[]} options.events The day's events; the barcode marks each one's year.
  * @param {number | null} [options.eventYear=null] The chosen event's year, if any.
  * @param {number} [options.width=1000]
  * @param {boolean} [options.dark=false]
- * @returns {{x: d3.ScaleLinear<number, number>, baselineY: number, group: d3.Selection<SVGGElement>} | null}
- *   The ruler's year scale, baseline height (in `parent`'s coordinates), and
- *   group (for attaching interactions), or null (and nothing drawn) if there
- *   are no events.
+ * @returns {{x: d3.ScaleLinear<number, number>, baselineY: number, group: d3.Selection<SVGGElement>, ticks: d3.Selection<SVGLineElement, HistEvent>} | null}
+ *   The ruler's year scale, baseline height (in `parent`'s coordinates),
+ *   group, and per-event tick hit targets (both for attaching interactions),
+ *   or null (and nothing drawn) if there are no events.
  */
 function drawTimelineRuler(
   parent,
   {
     basemapYears,
-    eventYears,
+    events,
     eventYear = null,
     width = 1000,
     dark = false,
   },
 ) {
-  if (!eventYears.length) return null;
+  if (!events.length) return null;
 
   const years = [...basemapYears].sort((a, b) => a - b);
 
   // Domain: earliest to latest event, widened to include their basemaps.
-  let [lo, hi] = d3.extent(eventYears);
+  let [lo, hi] = d3.extent(events, (d) => d.year);
   lo = Math.min(lo, closest(lo, years));
   hi = Math.max(hi, closest(hi, years));
   if (lo === hi) {
@@ -662,21 +656,22 @@ function drawTimelineRuler(
     .attr("stroke-width", BASELINE_WIDTH.unpinned)
     .style("pointer-events", "none");
 
-  // Barcode: a tick at each event's year.
+  // Barcode: a tick at each event's year. Its hit targets (below) share this
+  // geometry.
+  const tickedEvents = events.filter((d) => inDomain(d.year));
+  const tickAt = (lines) =>
+    lines
+      .attr("x1", (d) => x(d.year))
+      .attr("x2", (d) => x(d.year))
+      .attr("y1", BASELINE_Y - BARCODE_TICK.halfHeight)
+      .attr("y2", BASELINE_Y + BARCODE_TICK.halfHeight);
   const barcode = svg
     .append("g")
     .attr("stroke", getColor("landStroke", dark))
     .attr("stroke-width", BARCODE_TICK.width)
     .attr("stroke-opacity", BARCODE_OPACITY.unpinned)
     .style("pointer-events", "none");
-  barcode
-    .selectAll("line")
-    .data(eventYears.filter(inDomain))
-    .join("line")
-    .attr("x1", (y) => x(y))
-    .attr("x2", (y) => x(y))
-    .attr("y1", BASELINE_Y - BARCODE_TICK.halfHeight)
-    .attr("y2", BASELINE_Y + BARCODE_TICK.halfHeight);
+  barcode.selectAll("line").data(tickedEvents).join("line").call(tickAt);
 
   // Crisp marker for the chosen event's year, echoing its dot on the map.
   if (eventYear !== null && inDomain(eventYear)) {
@@ -771,10 +766,24 @@ function drawTimelineRuler(
     .attr("stroke", getColor("landStroke", dark))
     .attr("stroke-width", 1.5);
 
+  // Transparent hit targets over the barcode's ticks: wider than the ticks, so
+  // they're easy to point at without drawing the ticks heavier. Last in the
+  // ruler, so they sit above its other marks.
+  const ticks = svg
+    .append("g")
+    .attr("class", "timeline-tick-targets")
+    .selectAll("line")
+    .data(tickedEvents)
+    .join("line")
+    .call(tickAt)
+    .attr("stroke", "transparent")
+    .attr("stroke-width", THREAD_HIT_WIDTH);
+
   return {
     x,
     baselineY: BASELINE_Y,
     group: svg,
+    ticks,
     barcode,
     baseline,
     lock: { group: lock, icon, shackle, glowId },
