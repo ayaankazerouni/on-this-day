@@ -9,3 +9,14 @@ Make sure you have Node v24 installed. I'm using v24.22.3.
 * Install node dependencies: `npm install`
 * `npm run dev` to run the dev server at [https://localhost:5173](https://localhost:5173)
 
+## Basemaps
+
+The historical borders are a local snapshot of [aourednik/historical-basemaps](https://github.com/aourednik/historical-basemaps), refreshed by calling `map_utils/get-basemaps.sh`.
+The build doesn't download them.
+
+* `map_utils/get-basemaps.sh` downloads the GeoJSON, converts it to TopoJSON in `src/data/topo-data/` (via `convert-to-topojson.sh`), and indexes the result in `src/data/basemaps.json` (via `make-basemap-index.sh`). These data files are checked in to the repo. 
+* `make-basemap-index.sh src/data/topo-data src/data/basemaps.json` re-indexes the existing files without downloading.
+* `convert-to-topojson.sh` needs `geo2topo` (`npm install -g topojson-server`).
+
+The scripts are written for macOS: `convert-to-topojson.sh` uses BSD `stat -f%z` for its size summary, which won't work on Linux.
+

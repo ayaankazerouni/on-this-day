@@ -13,6 +13,8 @@ REPO_URL="https://github.com/aourednik/historical-basemaps"
 TMP_DIR="$ROOT_DIR/tmp"
 GEOJSON_DIR="$TMP_DIR/geojson"
 TOPO_DIR="$ROOT_DIR/src/data/topo-data"
+# Outside TOPO_DIR, since everything in there is bundled as a basemap (see getGeoData in lib.js).
+INDEX_FILE="$ROOT_DIR/src/data/basemaps.json"
 
 echo "Downloading historical basemaps..."
 
@@ -46,4 +48,10 @@ echo "Converting to TopoJSON..."
 rm -rf $TMP_DIR
 
 echo ""
-echo "Done! TopoJSON files are in $TOPO_DIR"
+echo "Indexing basemaps..."
+
+# Index the basemaps now in TOPO_DIR, which the site reads instead of upstream's index.
+"$SCRIPT_DIR/make-basemap-index.sh" "$TOPO_DIR" "$INDEX_FILE"
+
+echo ""
+echo "Done! TopoJSON files are in $TOPO_DIR, indexed in $INDEX_FILE"
