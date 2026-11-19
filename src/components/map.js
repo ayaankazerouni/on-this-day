@@ -3,7 +3,13 @@ import * as topojson from "topojson-client";
 
 import { escapeHtml, yearToString } from "./lib.js";
 
-/** @type {import('./lib.js').HistEvent} */
+/**
+ * One dot on the map, as made by the data loader. A type-only import, so no
+ * Node code reaches the browser. Named HistEvent so it doesn't shadow the DOM's
+ * Event.
+ *
+ * @typedef {import("../data/events.js").Event} HistEvent
+ */
 
 /**
  * Get color based on key and dark mode. Dark mode is typically set from
@@ -41,8 +47,6 @@ export function getColor(key, dark = false) {
     glow: dark ? "#ffffff" : "#555555",
   }[key];
 }
-
-const tooltip = getTooltipElement();
 
 /**
  * Whether the ruler's threads are pinned (by clicking the ruler). Kept here
@@ -87,6 +91,7 @@ export async function worldMap({
   timeline = null,
 } = {}) {
   const sphere = { type: "Sphere" };
+  const tooltip = getTooltipElement(dark);
 
   // Calculate responsive dimensions
   const height = width * 0.6; // Maintain aspect ratio
@@ -483,28 +488,39 @@ function getName(d) {
 }
 
 /**
+ * The map's tooltip, coloured for the current theme.
+ *
+ * There's one tooltip per page, shared by every render of the map: it's
+ * created on first use (hidden), then reused, so re-renders and module reloads
+ * don't leave extra elements on the page. Its colours are reset each call, so
+ * it follows theme changes.
+ *
  * @param {boolean} dark
- * @returns A d3 selection representing the tooltip element, initially invisible.
+ * @returns A d3 selection of the tooltip element.
  */
 function getTooltipElement(dark = false) {
-  const tooltip = d3
+  return d3
     .select("body")
-    .append("div")
-    .style("position", "absolute")
-    .style("visibility", "hidden")
+    .selectAll("div.map-tooltip")
+    .data([null])
+    .join((enter) =>
+      enter
+        .append("div")
+        .attr("class", "map-tooltip")
+        .style("position", "absolute")
+        .style("visibility", "hidden")
+        .style("border", "1px solid #ddd")
+        .style("border-radius", "4px")
+        .style("padding", "8px")
+        .style("font-size", "14px")
+        .style("font-family", "Avenir, sans-serif")
+        .style("box-shadow", "0 2px 4px rgba(0,0,0,0.1)")
+        .style("pointer-events", "none")
+        .style("z-index", "1000")
+        .style("max-width", "300px"),
+    )
     .style("background-color", getColor("tooltipBg", dark))
-    .style("border", "1px solid #ddd")
-    .style("border-radius", "4px")
-    .style("padding", "8px")
-    .style("font-size", "14px")
-    .style("font-family", "Avenir, sans-serif")
-    .style("color", getColor("tooltipFg", dark))
-    .style("box-shadow", "0 2px 4px rgba(0,0,0,0.1)")
-    .style("pointer-events", "none")
-    .style("z-index", "1000")
-    .style("max-width", "300px");
-
-  return tooltip;
+    .style("color", getColor("tooltipFg", dark));
 }
 
 // ---------------------------------------------------------------------------
