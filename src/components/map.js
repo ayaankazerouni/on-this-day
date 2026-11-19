@@ -297,24 +297,6 @@ export function worldMap({
         });
     }
 
-    // Marker and year label on the ruler for the hovered thread's event.
-    const hoverMark = ruler.group
-      .append("g")
-      .attr("visibility", "hidden")
-      .style("pointer-events", "none");
-    const hoverTick = hoverMark
-      .append("line")
-      // Taller than the barcode's ticks, so it stands out from them.
-      .attr("y1", ruler.baselineY - 10)
-      .attr("y2", ruler.baselineY + 10)
-      .attr("stroke", getColor("landHighlight", dark))
-      .attr("stroke-width", 1.5)
-      .attr("stroke-opacity", 0.6);
-    const hoverLabel = hoverMark
-      .append("text")
-      .attr("class", "timeline-hover-label")
-      .attr("y", ruler.baselineY - 12);
-
     let hovering = false;
     /** @type {HistEvent | null} The event whose thread is under the mouse. */
     let hoveredEvent = null;
@@ -341,37 +323,8 @@ export function worldMap({
       paths.filter(isHovered).raise();
       paths.filter(isChosen).raise();
 
-      if (hoveredEvent) {
-        const at = ruler.x(hoveredEvent.year);
-        hoverTick.attr("x1", at).attr("x2", at);
-        hoverLabel
-          .attr("x", at)
-          .attr("text-anchor", at < width * 0.2 ? "start" : at > width * 0.8 ? "end" : "middle")
-          .text(yearToString(hoveredEvent.year));
-        hoverMark.attr("visibility", "visible");
-      } else {
-        hoverMark.attr("visibility", "hidden");
-      }
-
-      // Lock: open on hover, closed while pinned. Pinning also darkens the barcode
-      // and thickens the baseline.
-      ruler.lock.group.attr("visibility", threadsPinned || hovering ? "visible" : "hidden");
-      ruler.lock.shackle.attr("d", threadsPinned ? SHACKLE_CLOSED : SHACKLE_OPEN);
-      // Shine while pinned and hovered: clicking here would act on this lock.
-      const shine = threadsPinned && hovering;
-      ruler.lock.icon
-        .attr("filter", shine ? `url(#${ruler.lock.glowId})` : null)
-        .attr("opacity", shine ? 1 : 0.8)
-        .style("transform", shine ? `scale(${LOCK_SHINE_SCALE})` : null);
-      ruler.barcode.attr(
-        "stroke-opacity",
-        threadsPinned ? BARCODE_OPACITY.pinned : BARCODE_OPACITY.unpinned,
-      );
-      ruler.baseline.attr(
-        "stroke-width",
-        threadsPinned ? BASELINE_WIDTH.pinned : BASELINE_WIDTH.unpinned,
-      );
-      ruler.group.attr("aria-pressed", threadsPinned);
+      ruler.markYear(hoveredEvent?.year ?? null);
+      ruler.setState({ pinned: threadsPinned, hovering });
     }
 
     // The ruler counts as hovered while the pointer is in its band, judged by
@@ -600,15 +553,14 @@ let filterCount = 0;
  *   baselineY: number,
  *   group: d3.Selection<SVGGElement>,
  *   ticks: d3.Selection<SVGLineElement, HistEvent>,
- *   barcode: d3.Selection<SVGGElement>,
- *   baseline: d3.Selection<SVGLineElement>,
- *   lock: {group: d3.Selection<SVGGElement>, icon: d3.Selection<SVGGElement>, shackle: d3.Selection<SVGPathElement>, glowId: string},
+ *   markYear: (year: number | null) => void,
+ *   setState: (state: {pinned: boolean, hovering: boolean}) => void,
  * } | null}
  *   The ruler's year scale, baseline height (in `parent`'s coordinates),
  *   group, and per-event tick hit targets (both for attaching interactions);
- *   the barcode, baseline, and padlock (whose look the caller updates as the
- *   threads are pinned and hovered). Null (and nothing drawn) if there are no
- *   events.
+ *   `markYear`, to mark a hovered event's year (null to clear); and `setState`,
+ *   to show whether the threads are pinned and the ruler hovered. Null (and
+ *   nothing drawn) if there are no events.
  */
 function drawTimelineRuler(
   parent,
@@ -780,8 +732,8 @@ function drawTimelineRuler(
     .attr("stroke-width", 1.5);
 
   // Transparent hit targets over the barcode's ticks: wider than the ticks, so
-  // they're easy to point at without drawing the ticks heavier. Last in the
-  // ruler, so they sit above its other marks.
+  // they're easy to point at without drawing the ticks heavier. Above the
+  // ruler's other marks, bar the hover marker (below), which ignores the mouse.
   const ticks = svg
     .append("g")
     .attr("class", "timeline-tick-targets")
@@ -792,13 +744,58 @@ function drawTimelineRuler(
     .attr("stroke", "transparent")
     .attr("stroke-width", THREAD_HIT_WIDTH);
 
-  return {
-    x,
-    baselineY: BASELINE_Y,
-    group: svg,
-    ticks,
-    barcode,
-    baseline,
-    lock: { group: lock, icon, shackle, glowId },
-  };
+  // Marker and year label for a hovered event (see markYear). Ignores the
+  // mouse, so the tick targets beneath it still catch it.
+  const hoverMark = svg
+    .append("g")
+    .attr("visibility", "hidden")
+    .style("pointer-events", "none");
+  const hoverTick = hoverMark
+    .append("line")
+    // Taller than the barcode's ticks, so it stands out from them.
+    .attr("y1", BASELINE_Y - 10)
+    .attr("y2", BASELINE_Y + 10)
+    .attr("stroke", getColor("landHighlight", dark))
+    .attr("stroke-width", 1.5)
+    .attr("stroke-opacity", 0.6);
+  const hoverLabel = hoverMark
+    .append("text")
+    .attr("class", "timeline-hover-label")
+    .attr("y", BASELINE_Y - 12);
+
+  /** Mark a hovered event's year on the ruler, or clear the mark (null). */
+  function markYear(year) {
+    if (year === null) {
+      hoverMark.attr("visibility", "hidden");
+      return;
+    }
+    const at = x(year);
+    hoverTick.attr("x1", at).attr("x2", at);
+    hoverLabel
+      .attr("x", at)
+      .attr("text-anchor", at < width * 0.2 ? "start" : at > width * 0.8 ? "end" : "middle")
+      .text(yearToString(year));
+    hoverMark.attr("visibility", "visible");
+  }
+
+  /**
+   * Show whether the threads are pinned and the ruler hovered. The padlock
+   * shows while either holds: open on hover, closed while pinned. Pinning also
+   * darkens the barcode and thickens the baseline.
+   */
+  function setState({ pinned, hovering }) {
+    lock.attr("visibility", pinned || hovering ? "visible" : "hidden");
+    shackle.attr("d", pinned ? SHACKLE_CLOSED : SHACKLE_OPEN);
+    // Shine while pinned and hovered: clicking here would act on this lock.
+    const shine = pinned && hovering;
+    icon
+      .attr("filter", shine ? `url(#${glowId})` : null)
+      .attr("opacity", shine ? 1 : 0.8)
+      .style("transform", shine ? `scale(${LOCK_SHINE_SCALE})` : null);
+    barcode.attr("stroke-opacity", pinned ? BARCODE_OPACITY.pinned : BARCODE_OPACITY.unpinned);
+    baseline.attr("stroke-width", pinned ? BASELINE_WIDTH.pinned : BASELINE_WIDTH.unpinned);
+    svg.attr("aria-pressed", pinned);
+  }
+
+  return { x, baselineY: BASELINE_Y, group: svg, ticks, markYear, setState };
 }
