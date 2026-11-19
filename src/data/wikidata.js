@@ -13,7 +13,7 @@ const QIDS_PER_QUERY = 100;
  *
  * Sent as a URL-encoded POST (SPARQL 1.1 Protocol §2.1.2), which the query
  * service recommends for larger queries to avoid URL length limits. The facts
- * query lists each batch's QIDs twice, so it is large. POST results aren't
+ * query lists up to QIDS_PER_QUERY QIDs, so it is large. POST results aren't
  * cached by the service, but each day's query is unique anyway.
  *
  * @see {@link https://www.mediawiki.org/wiki/Wikidata_Query_Service/User_Manual#SPARQL_endpoint}

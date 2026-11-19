@@ -1,59 +1,9 @@
 /**
- * Split the input string into words (or phrases
- * if they are quoted).
- * @param {string} input
- * @returns {string[]} an array of strings
- */
-export function tokenize(input) {
-    const regex = /"([^"]*)"|\S+/g;
-    let match;
-    const tokens = [];
-
-    while ((match = regex.exec(input)) !== null) {
-        // If content was quoted, add the capture group
-        //  to the list. Otherwise, add the match as is.
-        tokens.push(match[1] ? match[1] : match[0]);
-    }
-
-    return tokens;
-}
-
-/**
- * @param {string} element An HTML string.
- * @returns The string with all HTML content stripped.
- */
-export function stripHtml(element) {
-  let tmp = document.createElement('div');
-  tmp.innerHTML = element;
-  return tmp.innerText || "";
-}
-
-/**
  * @param {string} text Plain text.
  * @returns The text with HTML special characters escaped, safe to insert as HTML.
  */
 export function escapeHtml(text) {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-/**
- * @typedef {Object} HistEvent
- * @property {number} year
- * @property {string} description
- */
-
-/**
- * @param {string} searchTerms A search phrase
- * @returns {(e: HistEvent) => boolean} A predicate that checks if the event matches search terms.
- */
-export function filterTest(searchTerms) {
-  const lowerSearch = searchTerms.toLowerCase();
-
-  return (e) => {
-    const lowerDesc = e.description.toLowerCase();
-    const tokenized = tokenize(lowerSearch);
-    return tokenized.some(t => lowerDesc.includes(t));
-  };
 }
 
 /**

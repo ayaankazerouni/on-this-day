@@ -10,6 +10,8 @@ Make sure you have Node v24 installed. I'm using v24.22.3.
 * Set `WIKI_USERNAME` to your Wikimedia username or your email address. It's sent to Wikimedia's APIs as contact information, and `npm run dev` and `npm run build` refuse to start without it.
 * `npm run dev` to run the dev server at [https://localhost:5173](https://localhost:5173)
 
+The data loader's output (the day's events) is cached in `src/.observable/cache` and keyed by the loader's code, not the date, so the local preview keeps showing the day it first ran. Run `npm run clean` to clear the cache and fetch the current day's events on the next page load. CI starts with no cache, so every build fetches the current day's events.
+
 ## Basemaps
 
 The historical borders are a local snapshot of [aourednik/historical-basemaps](https://github.com/aourednik/historical-basemaps), refreshed by calling `map_utils/get-basemaps.sh`.

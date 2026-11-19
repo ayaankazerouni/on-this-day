@@ -1,7 +1,7 @@
 import * as d3 from "d3";
 import * as topojson from "topojson-client";
 
-import { escapeHtml, yearToString } from "./lib.js";
+import { escapeHtml, getClosestTimePeriod, yearToString } from "./lib.js";
 
 /**
  * One dot on the map, as made by the data loader. A type-only import, so no
@@ -57,8 +57,8 @@ let threadsPinned = false;
 
 /**
  * Two dots belong to the same event if they share a year and description.
- * (events.py emits one row per linked Wikipedia page with coordinates, so a
- * single event may appear as several dots.)
+ * (The data loader, events.js, emits one Event per dot, and an event placed
+ * at several locations gets several dots.)
  */
 function sameEvent(a, b) {
   return a && b && a.year === b.year && a.description === b.description;
@@ -80,7 +80,7 @@ function sameEvent(a, b) {
  *   drawTimelineRuler, minus events, width and dark.
  * @returns {SVGSVGElement}
  */
-export async function worldMap({
+export function worldMap({
   geodata = null,
   land,
   width = 1000,
@@ -120,7 +120,7 @@ export async function worldMap({
 
   const path = d3.geoPath(projection);
 
-  // Sea. Clicking it clears the event selection.
+  // Sea.
   g.append("path")
     .datum(sphere)
     .attr("fill", getColor("seaFill", dark))
@@ -146,12 +146,10 @@ export async function worldMap({
       .attr("stroke", getColor("landStroke", dark),
       )
       .attr("stroke-width", 0.2)
-      // Light borders on a dark fill read fainter than dark on light, so dark
-      // mode needs a higher opacity for unselected borders to show as clearly.
       .on("mouseover", (_, d) => {
         const name = getName(d);
         if (name !== null) {
-          tooltip.html(`${name}`).style("visibility", "visible");
+          tooltip.text(name).style("visibility", "visible");
         }
       })
       .on("mousemove", moveTooltip)
@@ -291,8 +289,8 @@ export async function worldMap({
           dots.filter(isChosen).raise();
         })
         .on("click", (event, d) => {
-          // Don't let the click reach the sea, which would clear the selection,
-          // or the ruler, which would toggle the pin.
+          // Don't let the click reach the page, which would clear the selection
+          // (see index.html), or the ruler, which would toggle the pin.
           event.stopPropagation();
           hideTooltip();
           onSelect(isChosen(d) ? null : d);
@@ -580,17 +578,6 @@ const BASELINE_WIDTH = { unpinned: 1, pinned: 2 };
 let filterCount = 0;
 
 /**
- * The basemap the map draws for a given year: the closest basemap year,
- * ties going to the earlier one. Same rule as lib.js's getClosestTimePeriod.
- *
- * @param {number} year
- * @param {number[]} years Basemap years, sorted ascending.
- */
-function closest(year, years) {
-  return years.reduce((a, b) => (Math.abs(b - year) < Math.abs(a - year) ? b : a));
-}
-
-/**
  * A horizontal ruler showing how far back in history today's events go.
  *
  * - The domain spans the day's earliest to latest event, extended to include
@@ -608,10 +595,20 @@ function closest(year, years) {
  * @param {number | null} [options.eventYear=null] The chosen event's year, if any.
  * @param {number} [options.width=1000]
  * @param {boolean} [options.dark=false]
- * @returns {{x: d3.ScaleLinear<number, number>, baselineY: number, group: d3.Selection<SVGGElement>, ticks: d3.Selection<SVGLineElement, HistEvent>} | null}
+ * @returns {{
+ *   x: d3.ScaleLinear<number, number>,
+ *   baselineY: number,
+ *   group: d3.Selection<SVGGElement>,
+ *   ticks: d3.Selection<SVGLineElement, HistEvent>,
+ *   barcode: d3.Selection<SVGGElement>,
+ *   baseline: d3.Selection<SVGLineElement>,
+ *   lock: {group: d3.Selection<SVGGElement>, icon: d3.Selection<SVGGElement>, shackle: d3.Selection<SVGPathElement>, glowId: string},
+ * } | null}
  *   The ruler's year scale, baseline height (in `parent`'s coordinates),
- *   group, and per-event tick hit targets (both for attaching interactions),
- *   or null (and nothing drawn) if there are no events.
+ *   group, and per-event tick hit targets (both for attaching interactions);
+ *   the barcode, baseline, and padlock (whose look the caller updates as the
+ *   threads are pinned and hovered). Null (and nothing drawn) if there are no
+ *   events.
  */
 function drawTimelineRuler(
   parent,
@@ -629,8 +626,8 @@ function drawTimelineRuler(
 
   // Domain: earliest to latest event, widened to include their basemaps.
   let [lo, hi] = d3.extent(events, (d) => d.year);
-  lo = Math.min(lo, closest(lo, years));
-  hi = Math.max(hi, closest(hi, years));
+  lo = Math.min(lo, getClosestTimePeriod(lo, years));
+  hi = Math.max(hi, getClosestTimePeriod(hi, years));
   if (lo === hi) {
     lo -= 50;
     hi += 50;

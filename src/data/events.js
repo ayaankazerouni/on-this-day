@@ -132,7 +132,7 @@ function sameYear(wikidataYear, feedYear) {
 }
 
 /**
- * How well an item's dates match the event's date (signal 4).
+ * How well an item's dates match the event's date.
  *
  * Scores:
  *   - 3: any day-precision date on the event's date. This is the only score
@@ -216,16 +216,16 @@ function dateMatch(dates, target) {
 /**
  * Find the page about the event itself, if there is one.
  *
- * 1. Candidates are pages whose Wikidata dates match the event's date (signal 4);
+ * 1. Candidates are pages whose Wikidata dates match the event's date;
  *    only the best-scoring candidates are kept.
  * 2. Among those, drop any candidate that another candidate is part of (P361),
- *    keeping the more specific event, e.g. a battle over its war (signal 3).
+ *    keeping the more specific event, e.g. a battle over its war.
  * 3. Then prefer the shortest matching date range, then feed order.
  *
  * @param {FeedPage[]} pages
  * @param {(page: FeedPage) => ItemFacts} factsOf
  * @param {FeedDate} target
- * @returns {{page: FeedPage, score: number} | null}
+ * @returns {FeedPage | null}
  */
 function findEventPage(pages, factsOf, target) {
   let candidates = pages
@@ -247,7 +247,7 @@ function findEventPage(pages, factsOf, target) {
   }
 
   candidates.sort((a, b) => a.span - b.span || a.index - b.index);
-  return { page: candidates[0].page, score: best };
+  return candidates[0].page;
 }
 
 /**
@@ -287,10 +287,11 @@ function coordinatesOf(page, facts) {
  * - If there's an event page with coordinates, use only that.
  * - If there's an event page without coordinates, use the event's other pages
  *   that it names as its location (P276), else administrative area (P131),
- *   else country (P17) (signal 1).
- * - Otherwise keep the most specific places: drop any page that another page
- *   is located in (P276 location / P131 administrative area / P17 country).
- *   Everything left gets a dot.
+ *   else country (P17).
+ * - Otherwise (no event page, or an event page that has no coordinates and
+ *   names none of the other pages) keep the most specific places: drop any
+ *   page that another page is located in (P276 location / P131 administrative
+ *   area / P17 country). Everything left gets a dot.
  *
  * @param {FeedPage[]} pages
  * @param {FeedPage | null} eventPage
@@ -450,39 +451,21 @@ export async function getEventsOnDay(month, day) {
 
   /** @type {Event[]} */
   const eventsOnDay = [];
-  const stats = {
-    events: feedEvents.length,
-    dropped: 0,
-    byScore: { 3: 0, 2: 0, 1: 0 },
-    noEventPage: 0
-  };
 
   for (const event of feedEvents) {
     /** @type {FeedPage[]} */
     const pages = event.pages ?? [];
-    if (!pages.length) {
-      stats.dropped++;
-      continue;
-    }
+    if (!pages.length) continue;
 
     const target = { year: event.year, month, day };
-    const found = findEventPage(pages, factsOf, target);
-    const eventPage = found?.page ?? null;
+    const eventPage = findEventPage(pages, factsOf, target);
 
     const dots = pickCoordinatePages(pages, eventPage, factsOf);
-    if (!dots.length) {
-      // This is a map: no coordinates, no event.
-      stats.dropped++;
-      continue;
-    }
-
-    if (found)
-      stats.byScore[found.score]++;
-    else
-      stats.noEventPage++;
+    // This is a map: no coordinates, no event.
+    if (!dots.length) continue;
 
     // The page shown is the event page if found, else the best guess.
-    // It need not be one of the pages from which the dots.
+    // It need not be one of the pages from which the dots came.
     const shownPage = eventPage ?? fallbackPage(pages, factsOf);
     const page = toPage(shownPage, factsOf(shownPage));
 
@@ -506,13 +489,6 @@ export async function getEventsOnDay(month, day) {
       });
     }
   }
-
-  // stderr, so it shows in the Framework console without ending up in the data.
-  console.warn(
-    `${MONTHS[month - 1].name} ${day}: ${stats.events} events, ${stats.dropped} dropped (no coordinates). ` +
-      `Event page found by exact date: ${stats.byScore[3]}, date range: ${stats.byScore[2]}, ` +
-      `year only: ${stats.byScore[1]}; none found: ${stats.noEventPage}.`
-  );
 
   return [1 + wikidataRequests, eventsOnDay];
 }
