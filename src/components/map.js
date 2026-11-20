@@ -512,10 +512,17 @@ const THREAD_HIT_WIDTH = 7;
 const LOCK_SHINE_SCALE = 1.15;
 
 /**
- * Barcode ticks, one per event: stroke width (thicker than a hairline, thinner
- * than THREAD_HIT_WIDTH) and half-height, in pixels.
+ * Rulers narrower than this, in pixels, crowd their ticks together, so they
+ * draw the barcode and baseline thinner (the `narrow` widths below).
  */
-const BARCODE_TICK = { width: 3, halfHeight: 7 };
+const NARROW_RULER_WIDTH = 600;
+
+/**
+ * Barcode ticks, one per event: stroke width on wide and narrow rulers
+ * (thicker than a hairline, thinner than THREAD_HIT_WIDTH) and half-height,
+ * in pixels.
+ */
+const BARCODE_TICK = { width: { wide: 3, narrow: 1.5 }, halfHeight: 7 };
 
 /**
  * Opacity of each barcode tick when the threads are unpinned and pinned. Low,
@@ -524,8 +531,14 @@ const BARCODE_TICK = { width: 3, halfHeight: 7 };
  */
 const BARCODE_OPACITY = { unpinned: 0.35, pinned: 0.6 };
 
-/** Baseline stroke width when the threads are unpinned and pinned; under BARCODE_TICK.width. */
-const BASELINE_WIDTH = { unpinned: 1, pinned: 2 };
+/**
+ * Baseline stroke width on wide and narrow rulers, when the threads are
+ * unpinned and pinned; under BARCODE_TICK.width for the same ruler.
+ */
+const BASELINE_WIDTH = {
+  wide: { unpinned: 1, pinned: 2 },
+  narrow: { unpinned: 0.75, pinned: 1.25 },
+};
 
 /** Each ruler gets its own filter ids, so re-renders (e.g. a theme change) don't clash. */
 let filterCount = 0;
@@ -588,6 +601,10 @@ function drawTimelineRuler(
   const x = d3.scaleLinear().domain([lo, hi]).range([MARGIN_X, width - MARGIN_X]);
   const inDomain = (y) => lo <= y && y <= hi;
 
+  const size = width < NARROW_RULER_WIDTH ? "narrow" : "wide";
+  const tickWidth = BARCODE_TICK.width[size];
+  const baselineWidth = BASELINE_WIDTH[size];
+
   const label = [
     `Timeline from ${yearToString(lo)} to ${yearToString(hi)}`,
     eventYear !== null ? `, chosen event in ${yearToString(eventYear)}` : "",
@@ -618,7 +635,7 @@ function drawTimelineRuler(
     .attr("y2", BASELINE_Y)
     .attr("stroke", getColor("landStroke", dark))
     .attr("stroke-opacity", 0.5)
-    .attr("stroke-width", BASELINE_WIDTH.unpinned)
+    .attr("stroke-width", baselineWidth.unpinned)
     .style("pointer-events", "none");
 
   // Barcode: a tick at each event's year. Its hit targets (below) share this
@@ -633,7 +650,7 @@ function drawTimelineRuler(
   const barcode = svg
     .append("g")
     .attr("stroke", getColor("landStroke", dark))
-    .attr("stroke-width", BARCODE_TICK.width)
+    .attr("stroke-width", tickWidth)
     .attr("stroke-opacity", BARCODE_OPACITY.unpinned)
     .style("pointer-events", "none");
   barcode.selectAll("line").data(tickedEvents).join("line").call(tickAt);
@@ -793,7 +810,7 @@ function drawTimelineRuler(
       .attr("opacity", shine ? 1 : 0.8)
       .style("transform", shine ? `scale(${LOCK_SHINE_SCALE})` : null);
     barcode.attr("stroke-opacity", pinned ? BARCODE_OPACITY.pinned : BARCODE_OPACITY.unpinned);
-    baseline.attr("stroke-width", pinned ? BASELINE_WIDTH.pinned : BASELINE_WIDTH.unpinned);
+    baseline.attr("stroke-width", pinned ? baselineWidth.pinned : baselineWidth.unpinned);
     svg.attr("aria-pressed", pinned);
   }
 

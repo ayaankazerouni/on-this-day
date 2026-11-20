@@ -49,10 +49,10 @@
       <div>
         <div class="event-info" id="event-info"></div>
         <p class="attribution">
-          Made with <a href="https://observablehq.github.io/notebook-kit/" target="_blank">Observable Notebook Kit</a> |
-          Powered by <a href="https://www.mediawiki.org/wiki/Wikimedia_APIs" target="_blank" rel="noopener">Wikimedia APIs</a> and <a href="https://www.wikidata.org/" target="_blank" rel="noopener">Wikidata</a> |
           <a href="./about.html">About</a> |
           <a href="https://github.com/ayaankazerouni/on-this-day" target="_blank">GitHub</a> |
+          Made with <a href="https://observablehq.github.io/notebook-kit/" target="_blank">Observable Notebook Kit</a> |
+          Powered by <a href="https://www.mediawiki.org/wiki/Wikimedia_APIs" target="_blank" rel="noopener">Wikimedia APIs</a> and <a href="https://www.wikidata.org/" target="_blank" rel="noopener">Wikidata</a>
         </p>
       </div>
       <div class="map-column">
@@ -130,8 +130,9 @@
     // Fill the layout's info card with the chosen event.
     document.querySelector("#event-info").replaceChildren(
       chosenEvent
-        ? html`${chosenEvent.page?.thumbnail
-              ? html`<a href=${chosenEvent.page.url} target="_blank" rel="noopener">
+        ? html`<div class="event-summary">
+            ${chosenEvent.page?.thumbnail
+              ? html`<a class="event-thumbnail-link" href=${chosenEvent.page.url} target="_blank" rel="noopener">
                   <img
                     class="event-thumbnail"
                     src=${chosenEvent.page.thumbnail.source}
@@ -139,12 +140,13 @@
                     loading="lazy">
                 </a>`
               : ""}
-          <h2>${chosenEvent.month} ${chosenEvent.day}, ${yearToString(chosenEvent.year)}</h2>
-          <p>${chosenEvent.description}</p>
-          ${chosenEvent.page
-            ? html`<p><a href=${chosenEvent.page.url} target="_blank" rel="noopener">
-                ${chosenEvent.page.title} ↗</a> on Wikipedia </p>`
-            : ""}`
+            <h3>${chosenEvent.month} ${chosenEvent.day}, ${yearToString(chosenEvent.year)}</h3>
+            <p>${chosenEvent.description}</p>
+            ${chosenEvent.page
+              ? html`<p><a href=${chosenEvent.page.url} target="_blank" rel="noopener">
+                  ${chosenEvent.page.title} ↗</a> on Wikipedia </p>`
+              : ""}
+          </div>`
         : html`<p>Click on a point in the map to see details.</p>`
     );
   </script>

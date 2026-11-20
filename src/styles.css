@@ -60,18 +60,18 @@ blockquote {
   border: solid 1px var(--theme-foreground-faintest);
   border-radius: 0.75rem;
   font-size: 12pt;
-}
 
-.event-info h2 {
-  margin-top: 0;
-}
+  & h2 {
+    margin-top: 0;
+  }
 
-.event-info p {
-  margin: 0 0 0 0;
-}
+  & p {
+    margin: 0 0 0 0;
+  }
 
-.event-info p+p {
-  margin: 0.75rem 0 0 0;
+  & p + p {
+    margin: 0.75rem 0 0 0;
+  }
 }
 
 /* Timeline ruler above the map. Text uses the theme's text colours. */
@@ -101,4 +101,59 @@ blockquote {
   object-fit: cover;
   border-radius: 4px;
   margin-bottom: 0.75rem;
+}
+
+/* The chosen event's thumbnail and text. A new block formatting context, so
+   it contains the thumbnail when that floats (on small screens). */
+.event-summary {
+  display: flow-root;
+}
+
+@media (orientation: portrait) and (width < 900px) {
+  h1 {
+    font-size: 1.6em;
+  }
+
+  h2 {
+    font-size: 1.25em;
+  }
+
+  .layout {
+    grid-template-columns: 1fr;
+
+    /* The map column comes second in the markup; show it first. */
+    & > .map-column {
+      order: -1;
+    }
+  }
+
+  /* Cancel the body's 24px side padding (Notebook Kit global.css) so the map
+     spans the screen. Generators.width(#map) picks up the new width. */
+  #map {
+    margin-inline: -24px;
+  }
+
+  /* Between the map and the info card here, so hold room for the credit
+     (up to two lines) even while it's empty; otherwise the card jumps when
+     borders appear. */
+  .basemap-source {
+    min-height: 2lh;
+  }
+
+  .event-info {
+    font-size: 10.5pt;
+  }
+
+  /* A smaller thumbnail at the top left, with the text wrapping around it,
+     like a drop cap. */
+  .event-thumbnail-link {
+    float: left;
+    width: 35%;
+    margin: 0 0.75rem 0.25rem 0;
+
+    & .event-thumbnail {
+      max-height: 120px;
+      margin-bottom: 0;
+    }
+  }
 }
