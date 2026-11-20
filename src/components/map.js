@@ -2,6 +2,7 @@ import * as d3 from "d3";
 import * as topojson from "topojson-client";
 
 import { escapeHtml, getClosestTimePeriod, yearToString } from "./lib.js";
+import { packDots } from "./layout.js";
 
 /**
  * One dot on the map, as made by the data loader. A type-only import, so no
@@ -47,6 +48,37 @@ export function getColor(key, dark = false) {
     glow: dark ? "#ffffff" : "#555555",
   }[key];
 }
+
+/** Radius of an event's dot, in pixels. */
+const DOT_RADIUS = 5;
+
+/**
+ * Dot outlines, in pixels. A chosen or hovered event's dots are drawn as
+ * rings: an outline in the highlight colour around a centre in the page's
+ * contrast colour, so they read as hollow beside the solid dots. A hovered
+ * ring is thinner than a chosen one.
+ */
+const DOT_STROKE = { normal: 1, hovered: 1.75, chosen: 2.5 };
+
+/**
+ * Furthest a pointer can be from a dot's centre and still hover or choose it,
+ * in pixels. Each dot's target is its Voronoi cell (the area closer to it than
+ * to any other dot) cut to this radius, so neighbouring targets never overlap
+ * and open sea or land away from the dots stays free for the page's own
+ * clicks and the regions' tooltips.
+ */
+const DOT_HIT_RADIUS = 50;
+
+/** Each map gets its own clip-path ids, so re-renders don't clash. */
+let dotTargetCount = 0;
+
+/**
+ * Radius to draw a dot at so that the outer edge of its outline lies where a
+ * normal dot's does. SVG strokes straddle the circle's edge, half inside and
+ * half outside, so the thicker ring is drawn on a smaller circle; packed dots
+ * then still just touch, whichever is chosen.
+ */
+const dotRadius = (strokeWidth) => DOT_RADIUS + (DOT_STROKE.normal - strokeWidth) / 2;
 
 /**
  * Whether the ruler's threads are pinned (by clicking the ruler). Kept here
@@ -167,6 +199,13 @@ export function worldMap({
 
   const isChosen = (d) => sameEvent(d, chosenEvent);
 
+  // Where each dot is drawn, in `g`'s coordinates, keyed by event: overlapping
+  // dots are packed into touching groups centred where they really are.
+  // Everything anchored to a dot (the dot itself, its thread) reads from here.
+  const dotPositions = packDots(events, projection, { radius: DOT_RADIUS });
+  /** @param {HistEvent} d */
+  const dotPosition = (d) => dotPositions.get(d);
+
   // Threads from each dot to its year on the ruler. The group is added here so
   // it draws between the land and the dots; it's filled in once the ruler (and
   // its scale) exists, below.
@@ -175,40 +214,111 @@ export function worldMap({
     .attr("class", "timeline-threads")
     .attr("fill", "none");
 
+  /**
+   * The event under the pointer, whether through one of its dots, its thread,
+   * or its tick on the ruler (null if none). Its dots and thread are
+   * highlighted, and its year marked on the ruler.
+   * @type {HistEvent | null}
+   */
+  let hoveredEvent = null;
+  const isHovered = (d) => sameEvent(d, hoveredEvent);
+
+  /** Redraw the threads for the current hover; set once they're drawn. */
+  let updateThreads = () => {};
+
+  // Dots ignore the mouse: their targets (below) are larger, and catch it.
   const dots = g
     .append("g")
+    .style("pointer-events", "none")
     .selectAll("circle")
     .data(events)
     .join("circle")
-    .attr("fill", getColor("pointFill", dark))
-    .attr("stroke", getColor("pointStroke", dark))
-    .attr("r", (d) => isChosen(d) ? 8 : 5)
-    .attr("opacity", (d) => chosenEvent && !isChosen(d) ? 0.5 : 1)
-    .style("cursor", "pointer")
-    .attr(
-      "transform",
-      (d) => `translate(${projection([d.longitude, d.latitude])})`,
-    )
-    .on("click", (event, d) => {
-      event.stopPropagation();
-      hideTooltip();
-      // Any of the chosen event's dots deselects it, not just the one clicked.
-      onSelect(isChosen(d) ? null : d);
-    })
-    .on("mouseover", (event, d) => {
-      // Bring the hovered dot above any dots it overlaps.
-      d3.select(event.currentTarget).raise();
-      showEventTooltip(d);
-    })
-    .on("mousemove", moveTooltip)
-    .on("mouseout", () => {
-      hideTooltip();
-      // Put the chosen event's dots back on top once the hover ends.
-      dots.filter(isChosen).raise();
-    });
+    .attr("transform", (d) => `translate(${dotPosition(d)})`);
 
-  // Draw the chosen event's dots on top of the dimmed ones.
-  dots.filter(isChosen).raise();
+  /** How a dot is drawn: as a ring if its event is chosen or hovered, else solid. */
+  const dotState = (d) => (isChosen(d) ? "chosen" : isHovered(d) ? "hovered" : "normal");
+
+  /**
+   * Style every dot for the current choice and hover. Solid dots get a thin
+   * outline that separates touching dots; while an event is chosen, other
+   * events' solid dots are dimmed.
+   */
+  function styleDots() {
+    dots
+      .attr("fill", (d) => getColor(dotState(d) === "normal" ? "pointFill" : "pointStroke", dark))
+      .attr("stroke", (d) => getColor(dotState(d) === "normal" ? "pointStroke" : "landHighlight", dark))
+      .attr("stroke-width", (d) => DOT_STROKE[dotState(d)])
+      .attr("r", (d) => dotRadius(DOT_STROKE[dotState(d)]))
+      .attr("opacity", (d) => (chosenEvent && dotState(d) === "normal" ? 0.5 : 1));
+  }
+  styleDots();
+
+  // Hover and click targets for the dots: each dot's Voronoi cell, clipped to
+  // a circle of DOT_HIT_RADIUS around it (see DOT_HIT_RADIUS). Above the dots
+  // and threads, so they catch the pointer first near a dot.
+  if (events.length) {
+    const voronoi = d3.Delaunay.from(
+      events,
+      (d) => dotPosition(d)[0],
+      (d) => dotPosition(d)[1],
+    ).voronoi([0, 0, width, height]);
+    const clipId = (i) => `map-dot-target-${dotTargetCount}-${i}`;
+    dotTargetCount++;
+
+    const targets = g.append("g").attr("class", "map-dot-targets");
+    targets
+      .append("defs")
+      .selectAll("clipPath")
+      .data(events)
+      .join("clipPath")
+      .attr("id", (_, i) => clipId(i))
+      .append("circle")
+      .attr("cx", (d) => dotPosition(d)[0])
+      .attr("cy", (d) => dotPosition(d)[1])
+      .attr("r", DOT_HIT_RADIUS);
+    targets
+      .selectAll("path")
+      .data(events)
+      .join("path")
+      .attr("d", (_, i) => voronoi.renderCell(i))
+      .attr("clip-path", (_, i) => `url(#${clipId(i)})`)
+      // Transparent rather than "none", so the cell still catches the pointer.
+      .attr("fill", "transparent")
+      .call(hoverAndSelect);
+  }
+
+  /** Mark an event as hovered (null for none), restyling its dots and thread. */
+  function setHovered(d) {
+    hoveredEvent = d;
+    styleDots();
+    updateThreads();
+  }
+
+  /**
+   * Hovering a dot's target, thread, or tick highlights its event and shows
+   * its tooltip; clicking chooses it, or clears the choice if it's already
+   * chosen (from any of its dots, not just the one clicked).
+   */
+  function hoverAndSelect(selection) {
+    selection
+      .style("cursor", "pointer")
+      .on("mouseover", (_, d) => {
+        setHovered(d);
+        showEventTooltip(d);
+      })
+      .on("mousemove", moveTooltip)
+      .on("mouseout", () => {
+        setHovered(null);
+        hideTooltip();
+      })
+      .on("click", (event, d) => {
+        // Don't let the click reach the page, which would clear the selection
+        // (see index.html), or the ruler, which would toggle the pin.
+        event.stopPropagation();
+        hideTooltip();
+        onSelect(isChosen(d) ? null : d);
+      });
+  }
 
   // Timeline ruler in the band above the map. Drawn beneath `g`, so the
   // threads' upper ends lie on top of it and catch the mouse there.
@@ -226,7 +336,8 @@ export function worldMap({
    * Draw a thread from every dot to its year on the ruler.
    *
    * - All threads show while the ruler is hovered, and stay when it's clicked
-   *   (pinned). The chosen event's threads always show, and are focused.
+   *   (pinned). The chosen event's threads always show, and are focused. A
+   *   hovered event's threads show too, dimly if the rest are hidden.
    * - Shown threads can be hovered (highlighting the event's threads and dots,
    *   with a tooltip and a marker on the ruler) and clicked (choosing the event).
    */
@@ -238,7 +349,7 @@ export function worldMap({
     const rulerY = ruler.baselineY - rulerHeight;
     const threadPath = (d) =>
       link({
-        source: projection([d.longitude, d.latitude]),
+        source: dotPosition(d),
         target: [ruler.x(d.year), rulerY],
       });
 
@@ -271,37 +382,14 @@ export function worldMap({
     // whether or not the threads are showing.
     ruler.ticks.call(hoverAndSelect);
 
-    /** Hovering highlights the event's threads and dots; clicking (de)selects it. */
-    function hoverAndSelect(selection) {
-      selection
-        .style("cursor", "pointer")
-        .on("mouseover", (_, d) => {
-          hoveredEvent = d;
-          update();
-          dots.filter((p) => sameEvent(p, d)).raise();
-          showEventTooltip(d);
-        })
-        .on("mousemove", moveTooltip)
-        .on("mouseout", () => {
-          hoveredEvent = null;
-          update();
-          hideTooltip();
-          dots.filter(isChosen).raise();
-        })
-        .on("click", (event, d) => {
-          // Don't let the click reach the page, which would clear the selection
-          // (see index.html), or the ruler, which would toggle the pin.
-          event.stopPropagation();
-          hideTooltip();
-          onSelect(isChosen(d) ? null : d);
-        });
-    }
-
     let hovering = false;
-    /** @type {HistEvent | null} The event whose thread is under the mouse. */
-    let hoveredEvent = null;
-    const isHovered = (d) => sameEvent(d, hoveredEvent);
-    const isShown = (d) => threadsPinned || hovering || isChosen(d);
+    const allShown = () => threadsPinned || hovering;
+    // A hovered event's thread shows even while the others are hidden.
+    const isShown = (d) => allShown() || isChosen(d) || isHovered(d);
+    const threadStyle = (d) =>
+      isChosen(d) ? THREAD_STYLE.focused
+      : isHovered(d) ? (allShown() ? THREAD_STYLE.hovered : THREAD_STYLE.peek)
+      : THREAD_STYLE.normal;
 
     function update() {
       const visibility = (d) => (isShown(d) ? "visible" : "hidden");
@@ -309,16 +397,8 @@ export function worldMap({
       hits.attr("visibility", visibility);
       paths
         .attr("visibility", visibility)
-        .attr("stroke-width", (d) =>
-          isChosen(d) ? THREAD_STYLE.focused.width
-          : isHovered(d) ? THREAD_STYLE.hovered.width
-          : THREAD_STYLE.normal.width,
-        )
-        .attr("stroke-opacity", (d) =>
-          isChosen(d) ? THREAD_STYLE.focused.opacity
-          : isHovered(d) ? THREAD_STYLE.hovered.opacity
-          : THREAD_STYLE.normal.opacity,
-        );
+        .attr("stroke-width", (d) => threadStyle(d).width)
+        .attr("stroke-opacity", (d) => threadStyle(d).opacity);
       // Hovered above the rest, chosen above all.
       paths.filter(isHovered).raise();
       paths.filter(isChosen).raise();
@@ -350,6 +430,7 @@ export function worldMap({
         update();
       });
 
+    updateThreads = update;
     update();
   }
 
@@ -495,10 +576,15 @@ const LOCK_OFFSET_X = 16;
 const SHACKLE_CLOSED = "M-3.5,-2 V-5 A3.5,3.5 0 0 1 3.5,-5 V-2";
 const SHACKLE_OPEN = "M-3.5,-2 V-8 A3.5,3.5 0 0 1 3.5,-8 V-6";
 
-/** Thread stroke styles: the chosen event's, a hovered event's, and the rest. */
+/**
+ * Thread stroke styles: the chosen event's; a hovered event's, while all
+ * threads show (so it stands out from them); a hovered event's otherwise, on
+ * its own (dim, a hint of where it sits on the ruler); and the rest.
+ */
 const THREAD_STYLE = {
   focused: { width: 2, opacity: 0.8 },
   hovered: { width: 1.5, opacity: 0.6 },
+  peek: { width: 1, opacity: 0.3 },
   normal: { width: 0.75, opacity: 0.15 },
 };
 
@@ -665,12 +751,14 @@ function drawTimelineRuler(
       .attr("y2", BASELINE_Y + 12)
       .attr("stroke", getColor("landHighlight", dark))
       .attr("stroke-width", 2);
+    // A ring, like the chosen event's dots. Its centre covers the line.
     g.append("circle")
       .attr("cx", x(eventYear))
       .attr("cy", BASELINE_Y)
       .attr("r", 4)
-      .attr("fill", getColor("landHighlight", dark))
-      .attr("stroke", getColor("pointStroke", dark));
+      .attr("fill", getColor("pointStroke", dark))
+      .attr("stroke", getColor("landHighlight", dark))
+      .attr("stroke-width", 2);
   }
 
   // Domain ends, below the baseline.
