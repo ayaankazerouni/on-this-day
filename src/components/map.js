@@ -49,16 +49,44 @@ export function getColor(key, dark = false) {
   }[key];
 }
 
-/** Radius of an event's dot, in pixels. */
-const DOT_RADIUS = 5;
+/**
+ * Radius of an event's dot, in pixels: `max` on maps DOT_FULL_SIZE_WIDTH wide
+ * or wider, shrinking in proportion on narrower maps, but never below `min`.
+ * Scaling keeps a dot's share of the map, and so the size of packed groups,
+ * roughly the same on a phone as on a desktop.
+ */
+const DOT_RADIUS = { min: 3, max: 4.5 };
+const DOT_FULL_SIZE_WIDTH = 1000;
+
+/** @param {number} width The map's width, in pixels. */
+function dotRadiusFor(width) {
+  const scaled = (DOT_RADIUS.max * width) / DOT_FULL_SIZE_WIDTH;
+  return Math.max(DOT_RADIUS.min, Math.min(DOT_RADIUS.max, scaled));
+}
 
 /**
- * Dot outlines, in pixels. A chosen or hovered event's dots are drawn as
- * rings: an outline in the highlight colour around a centre in the page's
- * contrast colour, so they read as hollow beside the solid dots. A hovered
- * ring is thinner than a chosen one.
+ * Dot outlines, as fractions of the dot's radius, so they scale with it. A
+ * chosen or hovered event's dots are drawn as rings: an outline in the
+ * highlight colour around a centre in the page's contrast colour, so they
+ * read as hollow beside the solid dots. A hovered ring is thinner than a
+ * chosen one. (At a 5px radius: 1px, 1.75px, and 2.5px.)
  */
-const DOT_STROKE = { normal: 1, hovered: 1.75, chosen: 2.5 };
+const DOT_STROKE = { normal: 0.2, hovered: 0.35, chosen: 0.5 };
+
+/**
+ * Furthest packing may move a dot from its true position, in multiples of the
+ * map's normal dot radius (so it scales with the map). A group that would have
+ * to move a dot further is shrunk until it fits (see DOT_SHRINK_FLOOR); if it
+ * still doesn't, its dots are left overlapping: geography wins over clutter.
+ */
+const DOT_MAX_SHIFT = 2.5;
+
+/**
+ * Smallest radius, in pixels, that a packed group's dots may be shrunk to so
+ * the group fits within DOT_MAX_SHIFT. Lower clears more overlaps in dense
+ * clusters, at the cost of tinier dots there.
+ */
+const DOT_SHRINK_FLOOR = 1.5;
 
 /**
  * Furthest a pointer can be from a dot's centre and still hover or choose it,
@@ -67,18 +95,10 @@ const DOT_STROKE = { normal: 1, hovered: 1.75, chosen: 2.5 };
  * and open sea or land away from the dots stays free for the page's own
  * clicks and the regions' tooltips.
  */
-const DOT_HIT_RADIUS = 50;
+const DOT_HIT_RADIUS = 30;
 
 /** Each map gets its own clip-path ids, so re-renders don't clash. */
 let dotTargetCount = 0;
-
-/**
- * Radius to draw a dot at so that the outer edge of its outline lies where a
- * normal dot's does. SVG strokes straddle the circle's edge, half inside and
- * half outside, so the thicker ring is drawn on a smaller circle; packed dots
- * then still just touch, whichever is chosen.
- */
-const dotRadius = (strokeWidth) => DOT_RADIUS + (DOT_STROKE.normal - strokeWidth) / 2;
 
 /**
  * Whether the ruler's threads are pinned (by clicking the ruler). Kept here
@@ -199,12 +219,33 @@ export function worldMap({
 
   const isChosen = (d) => sameEvent(d, chosenEvent);
 
-  // Where each dot is drawn, in `g`'s coordinates, keyed by event: overlapping
-  // dots are packed into touching groups centred where they really are.
+  // Normal dot size for this map's width (see DOT_RADIUS).
+  const dotRadius = dotRadiusFor(width);
+
+  // Where each dot is drawn, and how big. Overlapping dots are packed into
+  // touching groups centred around the events' actual projected coordinates,
+  // shrunk if that would otherwise move a dot too far (DOT_MAX_SHIFT,
+  // DOT_SHRINK_FLOOR), or else left overlapping. The limit comes from the
+  // normal radius, so it stays put while a group shrinks.
   // Everything anchored to a dot (the dot itself, its thread) reads from here.
-  const dotPositions = packDots(events, projection, { radius: DOT_RADIUS });
+  const dotLayout = packDots(events, projection, {
+    radius: dotRadius,
+    minRadius: DOT_SHRINK_FLOOR,
+    maxShift: DOT_MAX_SHIFT * dotRadius,
+  });
   /** @param {HistEvent} d */
-  const dotPosition = (d) => dotPositions.get(d);
+  const dotPosition = (d) => dotLayout.get(d).position;
+
+  /** Outline width for dot `d` drawn in `state` ("normal", "hovered", "chosen"). */
+  const strokeWidth = (d, state) => DOT_STROKE[state] * dotLayout.get(d).radius;
+  /**
+   * Radius to draw dot `d` in `state` at, so that the outer edge of its
+   * outline lies where it would for a normal dot. SVG strokes straddle the
+   * circle's edge, half inside and half outside, so a thicker ring is drawn on
+   * a smaller circle; packed dots then still just touch, whichever is chosen.
+   */
+  const drawnRadius = (d, state) =>
+    dotLayout.get(d).radius + (strokeWidth(d, "normal") - strokeWidth(d, state)) / 2;
 
   // Threads from each dot to its year on the ruler. The group is added here so
   // it draws between the land and the dots; it's filled in once the ruler (and
@@ -241,21 +282,24 @@ export function worldMap({
   /**
    * Style every dot for the current choice and hover. Solid dots get a thin
    * outline that separates touching dots; while an event is chosen, other
-   * events' solid dots are dimmed.
+   * events' solid dots are dimmed. Dots left overlapping (see DOT_MAX_SHIFT)
+   * are stacked hovered above the rest, and chosen above all.
    */
   function styleDots() {
     dots
       .attr("fill", (d) => getColor(dotState(d) === "normal" ? "pointFill" : "pointStroke", dark))
       .attr("stroke", (d) => getColor(dotState(d) === "normal" ? "pointStroke" : "landHighlight", dark))
-      .attr("stroke-width", (d) => DOT_STROKE[dotState(d)])
-      .attr("r", (d) => dotRadius(DOT_STROKE[dotState(d)]))
+      .attr("stroke-width", (d) => strokeWidth(d, dotState(d)))
+      .attr("r", (d) => drawnRadius(d, dotState(d)))
       .attr("opacity", (d) => (chosenEvent && dotState(d) === "normal" ? 0.5 : 1));
+    dots.filter(isHovered).raise();
+    dots.filter(isChosen).raise();
   }
   styleDots();
 
-  // Hover and click targets for the dots: each dot's Voronoi cell, clipped to
-  // a circle of DOT_HIT_RADIUS around it (see DOT_HIT_RADIUS). Above the dots
-  // and threads, so they catch the pointer first near a dot.
+  // Hover and click targets for the dots.
+  // Each dot's Voronoi cell, clipped to a circle of DOT_HIT_RADIUS around it.
+  // Drawn above the dots and threads, so they catch the pointer first near a dot.
   if (events.length) {
     const voronoi = d3.Delaunay.from(
       events,
